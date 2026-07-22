@@ -4,7 +4,10 @@ using ManifoldFields
 using Test
 
 @testset "location trait methods" begin
-    g = LatLonGrid(2, 4)
+    g = LatLonGrid(
+        lat_edges=collect(range(-90.0, 90.0; length=3)),
+        lon_edges=collect(range(0.0, 360.0; length=5)),
+    )
 
     @test location_dimname(NodeLoc) == Dim{:node}
     @test location_dimname(EdgeLoc) == Dim{:edge}
