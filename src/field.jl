@@ -45,6 +45,10 @@ function Base.IndexStyle(::Type{<:DiscreteField{<:Any, <:Any, <:Any, <:Any, A}})
 end
 Base.parent(f::DiscreteField) = f.data
 
+function _valid_field_name(name)
+    return isempty(String(Symbol(name))) ? :field : name
+end
+
 function _dim_name(d)
     return DimensionalData.name(d)
 end
@@ -86,7 +90,7 @@ function DiscreteField(
 ) where {Loc <: AbstractLocation, M <: AbstractManifoldMesh, A <: AbstractArray}
     checked_dims = _validate_location_dims(Loc, mesh, values, ds)
     return DiscreteField{Loc}(
-        values, checked_dims, refdims, name, metadata, mesh
+        values, checked_dims, refdims, _valid_field_name(name), metadata, mesh
     )
 end
 
@@ -100,6 +104,37 @@ function DiscreteField(
 ) where {Loc <: AbstractLocation, M <: AbstractManifoldMesh}
     return DiscreteField(Loc, mesh, DimensionalData.data(data), DimensionalData.dims(data);
         name = name, metadata = metadata, refdims = refdims)
+end
+
+function _dimarray(f::DiscreteField)
+    return DimensionalData.DimArray(
+        parent(f),
+        DimensionalData.dims(f);
+        refdims = DimensionalData.refdims(f),
+        name = DimensionalData.name(f),
+        metadata = DimensionalData.metadata(f)
+    )
+end
+
+function _maybe_discrete_field(f::DiscreteField{Loc}, result) where {Loc}
+    result isa AbstractDimArray || return result
+    isempty(_location_axes(Loc, DimensionalData.dims(result))) && return result
+    _validate_location_dims(Loc, mesh(f), parent(result), DimensionalData.dims(result))
+    return DiscreteField(Loc, mesh(f), parent(result), DimensionalData.dims(result);
+        refdims = DimensionalData.refdims(result),
+        name = DimensionalData.name(result),
+        metadata = DimensionalData.metadata(result))
+end
+
+function Base.getindex(f::DiscreteField, d::DimensionalData.Dimension,
+        ds::DimensionalData.Dimension...; kw...)
+    result = getindex(_dimarray(f), d, ds...; kw...)
+    return _maybe_discrete_field(f, result)
+end
+
+function Base.getindex(f::DiscreteField; kw...)
+    result = getindex(_dimarray(f); kw...)
+    return _maybe_discrete_field(f, result)
 end
 
 function DiscreteField(::Type{Loc}, mesh::M, values::AbstractArray;

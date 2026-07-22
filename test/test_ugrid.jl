@@ -182,6 +182,18 @@ end
     @test data(loaded_float32) == data(float32_field)
     @test eltype(data(loaded_float32)) == Float32
 
+    unnamed_dimarray = DimArray(node_values(g), node_dims(g))
+    unnamed_field = DiscreteField(NodeLoc, g, unnamed_dimarray)
+    @test DimensionalData.name(unnamed_field) == :field
+    unnamed_path = tempname() * ".nc"
+    save_ugrid(unnamed_field, unnamed_path)
+    unnamed_ds = to_ugrid(unnamed_field)
+    @test haskey(unnamed_ds.variables, "field")
+    loaded_unnamed = load_ugrid(unnamed_path)
+    @test loaded_unnamed isa DiscreteField{NodeLoc}
+    @test DimensionalData.name(loaded_unnamed) == :field
+    @test data(loaded_unnamed) == node_values(g)
+
     @test_throws ArgumentError save_ugrid(f, tempname() * ".nc"; format = :unknown)
 end
 
