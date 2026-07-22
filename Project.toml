@@ -1,0 +1,27 @@
+name = "ManifoldFields"
+uuid = "9c5b4d8f-6d30-4f8a-9f1f-2c1e5c2f4b31"
+version = "0.1.0"
+
+[deps]
+DimensionalData = "0703355e-b756-11e9-17c0-8b28908087d0"
+ManifoldMeshes = "d2a7aed9-80bb-46a9-9a56-e170a93cc177"
+NCDatasets = "85f8d34a-cbdd-5861-8df4-14fed0d494ab"
+StaticArrays = "90137ffa-7385-5640-81b9-e52037218182"
+YAXArrays = "c21b50f5-a021-445e-a6bb-8c82a528c804"
+
+[compat]
+Aqua = "0.8"
+DimensionalData = "0.29"
+ManifoldMeshes = "0.6"
+NCDatasets = "0.14"
+StaticArrays = "1.9"
+Test = "1.10"
+YAXArrays = "0.6"
+julia = "1.10"
+
+[extras]
+Aqua = "4c88cf16-eb10-579e-8560-4a9242c79595"
+Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+
+[targets]
+test = ["Aqua", "Test"]
