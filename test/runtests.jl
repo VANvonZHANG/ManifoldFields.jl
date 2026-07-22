@@ -7,4 +7,5 @@ using Test
 end
 
 @testset "ManifoldFields.jl" begin
+    include("test_locations.jl")
 end
