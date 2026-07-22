@@ -1,3 +1,4 @@
+using DimensionalData
 using ManifoldFields
 using ManifoldMeshes
 using Test
@@ -108,4 +109,51 @@ end
                         name=:node_temp_by_time)
     nt_ds = to_ugrid(ntf)
     @test nt_ds.variables["node_temp_by_time"].dims == ("n_node", "time")
+end
+
+@testset "UGRID own-file in-memory round-trip" begin
+    g = small_grid()
+    f = DiscreteField(CellLoc, g, cell_values(g), cell_dims(g); name=:cell_area)
+    ds = to_ugrid(f)
+    mesh_attrs = ds.variables["Mesh2"].attrs
+
+    @test mesh_attrs["manifoldfields_grid_type"] == "LatLonGrid"
+    @test mesh_attrs["manifoldfields_lat_edges"] == g.lat_edges
+    @test mesh_attrs["manifoldfields_lon_edges"] == g.lon_edges
+    @test mesh_attrs["manifoldfields_radius"] == g.R
+
+    loaded = from_ugrid(ds)
+    @test loaded isa DiscreteField{CellLoc}
+    @test location(loaded) === CellLoc
+    @test data(loaded) == data(f)
+    @test DimensionalData.dims(loaded) == DimensionalData.dims(f)
+    @test num_cells(mesh(loaded)) == num_cells(g)
+    @test num_nodes(mesh(loaded)) == num_nodes(g)
+
+    nf = DiscreteField(NodeLoc, g, node_time_values(g), node_time_dims(g);
+                       name=:node_temp_by_time)
+    loaded_node = from_ugrid(to_ugrid(nf))
+    @test loaded_node isa DiscreteField{NodeLoc}
+    @test location(loaded_node) === NodeLoc
+    @test data(loaded_node) == data(nf)
+    @test DimensionalData.dims(loaded_node) == DimensionalData.dims(nf)
+end
+
+@testset "UGRID NetCDF save/load round-trip" begin
+    g = small_grid()
+    f = DiscreteField(CellLoc, g, cell_values(g), cell_dims(g); name=:cell_area)
+    path = tempname() * ".nc"
+
+    save_ugrid(f, path)
+    loaded = load_ugrid(path)
+    @test loaded isa DiscreteField{CellLoc}
+    @test location(loaded) === CellLoc
+    @test data(loaded) == data(f)
+    @test DimensionalData.dims(loaded) == DimensionalData.dims(f)
+
+    loaded_mesh = load_ugrid_mesh(path)
+    @test num_cells(loaded_mesh) == num_cells(g)
+    @test num_nodes(loaded_mesh) == num_nodes(g)
+
+    @test_throws ArgumentError save_ugrid(f, tempname() * ".nc"; format=:unknown)
 end
