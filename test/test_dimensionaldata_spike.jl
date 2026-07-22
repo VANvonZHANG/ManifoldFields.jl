@@ -3,8 +3,6 @@ using ManifoldFields
 using ManifoldMeshes
 using Test
 
-include("helpers.jl")
-
 @testset "DimensionalData compatibility spike" begin
     g = small_grid()
     f = DiscreteField(NodeLoc, g, node_time_values(g), node_time_dims(g);

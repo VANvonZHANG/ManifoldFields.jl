@@ -1,10 +1,20 @@
-import Base.Broadcast: AbstractArrayStyle, BroadcastStyle, Broadcasted
+import Base.Broadcast: AbstractArrayStyle, BroadcastStyle, Broadcasted, DefaultArrayStyle
 
 struct DiscreteFieldStyle{N} <: AbstractArrayStyle{N} end
 
 DiscreteFieldStyle{N}(::Val{N}) where {N} = DiscreteFieldStyle{N}()
 
 BroadcastStyle(::Type{<:DiscreteField{<:Any,<:Any,N}}) where {N} = DiscreteFieldStyle{N}()
+BroadcastStyle(::DiscreteFieldStyle{N}, ::DefaultArrayStyle{N}) where {N} =
+    DiscreteFieldStyle{N}()
+BroadcastStyle(::DefaultArrayStyle{N}, ::DiscreteFieldStyle{N}) where {N} =
+    DiscreteFieldStyle{N}()
+BroadcastStyle(::DiscreteFieldStyle{N}, ::DiscreteFieldStyle{N}) where {N} =
+    DiscreteFieldStyle{N}()
+BroadcastStyle(::DiscreteFieldStyle{N}, ::DimensionalData.DimensionalStyle) where {N} =
+    DiscreteFieldStyle{N}()
+BroadcastStyle(::DimensionalData.DimensionalStyle, ::DiscreteFieldStyle{N}) where {N} =
+    DiscreteFieldStyle{N}()
 
 function Base.copy(bc::Broadcasted{DiscreteFieldStyle{N}}) where {N}
     fields = Any[]
@@ -14,7 +24,7 @@ function Base.copy(bc::Broadcasted{DiscreteFieldStyle{N}}) where {N}
     anchor = first(fields)
     _validate_broadcast_fields(anchor, fields)
 
-    values = copy(_unwrap_fields(bc))
+    values = _materialize_values(_unwrap_fields(bc))
     return DiscreteField(
         location(anchor),
         mesh(anchor),
@@ -53,10 +63,15 @@ end
 _collect_fields!(fields, _) = fields
 
 function _unwrap_fields(bc::Broadcasted)
-    return Broadcasted(bc.f, map(_unwrap_fields, bc.args))
+    return Broadcasted(bc.f, map(_unwrap_fields, bc.args), bc.axes)
 end
 function _unwrap_fields(ex::Base.Broadcast.Extruded)
     return Base.Broadcast.Extruded(_unwrap_fields(ex.x), ex.keeps, ex.defaults)
 end
 _unwrap_fields(f::DiscreteField) = parent(f)
 _unwrap_fields(x) = x
+
+function _materialize_values(bc)
+    result = copy(bc)
+    return result isa DimensionalData.AbstractDimArray ? parent(result) : result
+end
