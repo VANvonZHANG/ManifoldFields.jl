@@ -184,3 +184,79 @@ end
 
     @test_throws ArgumentError save_ugrid(f, tempname() * ".nc"; format=:unknown)
 end
+
+@testset "UGRID NetCDF file signature" begin
+    g = small_grid()
+    f = DiscreteField(NodeLoc, g, node_values(g), node_dims(g); name=:node_temp)
+    path = tempname() * ".nc"
+
+    save_ugrid(f, path)
+    open(path, "r") do io
+        magic = read(io, 4)
+        @test magic == UInt8[0x43, 0x44, 0x46, 0x01] ||
+              magic == UInt8[0x43, 0x44, 0x46, 0x02] ||
+              magic == UInt8[0x89, 0x48, 0x44, 0x46]
+    end
+end
+
+@testset "UGRID reader rejects invalid datasets" begin
+    empty = UGridDataset(
+        Dict{String,ManifoldFields.UGridVariable}(),
+        Dict{String,Any}("Conventions" => "CF-1.11 UGRID-1.0"),
+    )
+    @test_throws ArgumentError from_ugrid_mesh(empty)
+
+    g = small_grid()
+    f = DiscreteField(NodeLoc, g, node_values(g), node_dims(g); name=:node_temp)
+
+    multi_data_ds = to_ugrid(f)
+    multi_data_ds.variables["other_node_temp"] = ManifoldFields.UGridVariable(
+        node_values(g),
+        ("n_node",),
+        Dict{String,Any}(
+            "mesh" => "Mesh2",
+            "location" => "node",
+            "coordinates" => "Mesh2_node_lon Mesh2_node_lat",
+        ),
+    )
+    @test_throws ArgumentError from_ugrid(multi_data_ds)
+
+    missing_location_ds = to_ugrid(f)
+    delete!(missing_location_ds.variables["node_temp"].attrs, "location")
+    @test_throws ArgumentError from_ugrid(missing_location_ds)
+
+    unsupported_location_ds = to_ugrid(f)
+    unsupported_location_ds.variables["node_temp"].attrs["location"] = "volume"
+    @test_throws ArgumentError from_ugrid(unsupported_location_ds)
+
+    missing_cf_role_ds = to_ugrid(g)
+    delete!(missing_cf_role_ds.variables["Mesh2"].attrs, "cf_role")
+    @test_throws ArgumentError from_ugrid_mesh(missing_cf_role_ds)
+
+    wrong_cf_role_ds = to_ugrid(g)
+    wrong_cf_role_ds.variables["Mesh2"].attrs["cf_role"] = "not_mesh_topology"
+    @test_throws ArgumentError from_ugrid_mesh(wrong_cf_role_ds)
+
+    missing_face_nodes_ds = to_ugrid(g)
+    delete!(missing_face_nodes_ds.variables, "Mesh2_face_nodes")
+    @test_throws ArgumentError from_ugrid_mesh(missing_face_nodes_ds)
+
+    for attr in (
+        "manifoldfields_grid_type",
+        "manifoldfields_lat_edges",
+        "manifoldfields_lon_edges",
+        "manifoldfields_radius",
+    )
+        missing_metadata_ds = to_ugrid(g)
+        delete!(missing_metadata_ds.variables["Mesh2"].attrs, attr)
+        @test_throws ArgumentError from_ugrid_mesh(missing_metadata_ds)
+    end
+
+    mismatched_rank_ds = to_ugrid(f)
+    mismatched_rank_ds.variables["node_temp"] = ManifoldFields.UGridVariable(
+        node_values(g),
+        ("n_node", "time"),
+        copy(mismatched_rank_ds.variables["node_temp"].attrs),
+    )
+    @test_throws DimensionMismatch from_ugrid(mismatched_rank_ds)
+end
