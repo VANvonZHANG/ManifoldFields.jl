@@ -33,5 +33,7 @@ using Test
     @test size(face_nodes.data) == (num_cells(g), 4)
     @test face_nodes.attrs["cf_role"] == "face_node_connectivity"
     @test face_nodes.attrs["start_index"] == 1
-    @test Tuple(face_nodes.data[1, :]) == cell_nodes(g, 1)
+    for c in 1:num_cells(g)
+        @test Tuple(face_nodes.data[c, :]) == cell_nodes(g, c)
+    end
 end
