@@ -113,7 +113,8 @@ end
 
 @testset "UGRID own-file in-memory round-trip" begin
     g = small_grid()
-    f = DiscreteField(CellLoc, g, cell_values(g), cell_dims(g); name=:cell_area)
+    f = DiscreteField(CellLoc, g, cell_values(g), cell_dims(g); name=:cell_area,
+                      metadata=Dict("units" => "m2"))
     ds = to_ugrid(f)
     mesh_attrs = ds.variables["Mesh2"].attrs
 
@@ -127,8 +128,14 @@ end
     @test location(loaded) === CellLoc
     @test data(loaded) == data(f)
     @test DimensionalData.dims(loaded) == DimensionalData.dims(f)
+    @test DimensionalData.metadata(loaded)["units"] == "m2"
+    @test DimensionalData.metadata(loaded)["mesh"] == "Mesh2"
     @test num_cells(mesh(loaded)) == num_cells(g)
     @test num_nodes(mesh(loaded)) == num_nodes(g)
+
+    missing_radius_ds = to_ugrid(g)
+    delete!(missing_radius_ds.variables["Mesh2"].attrs, "manifoldfields_radius")
+    @test_throws ArgumentError from_ugrid_mesh(missing_radius_ds)
 
     nf = DiscreteField(NodeLoc, g, node_time_values(g), node_time_dims(g);
                        name=:node_temp_by_time)
@@ -141,7 +148,8 @@ end
 
 @testset "UGRID NetCDF save/load round-trip" begin
     g = small_grid()
-    f = DiscreteField(CellLoc, g, cell_values(g), cell_dims(g); name=:cell_area)
+    f = DiscreteField(CellLoc, g, cell_values(g), cell_dims(g); name=:cell_area,
+                      metadata=Dict("units" => "m2"))
     path = tempname() * ".nc"
 
     save_ugrid(f, path)
@@ -150,10 +158,29 @@ end
     @test location(loaded) === CellLoc
     @test data(loaded) == data(f)
     @test DimensionalData.dims(loaded) == DimensionalData.dims(f)
+    @test DimensionalData.metadata(loaded)["units"] == "m2"
+    @test DimensionalData.metadata(loaded)["mesh"] == "Mesh2"
 
     loaded_mesh = load_ugrid_mesh(path)
     @test num_cells(loaded_mesh) == num_cells(g)
     @test num_nodes(loaded_mesh) == num_nodes(g)
+
+    int_values = fill(Int64(3_000_000_000), num_nodes(g))
+    int_field = DiscreteField(NodeLoc, g, int_values, node_dims(g); name=:node_count)
+    int_path = tempname() * ".nc"
+    save_ugrid(int_field, int_path)
+    loaded_int = load_ugrid(int_path)
+    @test data(loaded_int) == data(int_field)
+    @test eltype(data(loaded_int)) == Int64
+
+    float32_values = Float32.(node_values(g))
+    float32_field = DiscreteField(NodeLoc, g, float32_values, node_dims(g);
+                                  name=:node_temp_float32)
+    float32_path = tempname() * ".nc"
+    save_ugrid(float32_field, float32_path)
+    loaded_float32 = load_ugrid(float32_path)
+    @test data(loaded_float32) == data(float32_field)
+    @test eltype(data(loaded_float32)) == Float32
 
     @test_throws ArgumentError save_ugrid(f, tempname() * ".nc"; format=:unknown)
 end

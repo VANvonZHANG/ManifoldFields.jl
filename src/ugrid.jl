@@ -99,13 +99,27 @@ function to_ugrid(f::DiscreteField)
     ds.variables[varname] = UGridVariable(
         data(f),
         var_dims,
-        Dict{String,Any}(
-            "mesh" => "Mesh2",
-            "location" => ugrid_location(Loc),
-            "coordinates" => coordinates,
-        ),
+        _data_var_attrs(f, Loc, coordinates),
     )
     return ds
+end
+
+function _metadata_attrs(metadata)
+    attrs = Dict{String,Any}()
+    metadata === nothing && return attrs
+    metadata isa AbstractDict || return attrs
+    for (k, v) in metadata
+        attrs[String(k)] = v
+    end
+    return attrs
+end
+
+function _data_var_attrs(f::DiscreteField, Loc, coordinates)
+    attrs = _metadata_attrs(DimensionalData.metadata(f))
+    attrs["mesh"] = "Mesh2"
+    attrs["location"] = ugrid_location(Loc)
+    attrs["coordinates"] = coordinates
+    return attrs
 end
 
 _ugrid_coordinates(::Type{NodeLoc}) = "Mesh2_node_lon Mesh2_node_lat"
@@ -255,15 +269,12 @@ function from_ugrid_mesh(ds::UGridDataset; grid_type=nothing)
     _require_var(ds, "Mesh2_face_nodes")
 
     attrs = meshvar.attrs
-    metadata_grid_type = get(attrs, "manifoldfields_grid_type", nothing)
+    metadata_grid_type = _require_attr(meshvar, "manifoldfields_grid_type")
     requested_grid_type = grid_type === nothing ? metadata_grid_type : grid_type
-    if requested_grid_type == "LatLonGrid" &&
-       haskey(attrs, "manifoldfields_lat_edges") &&
-       haskey(attrs, "manifoldfields_lon_edges")
+    if requested_grid_type == "LatLonGrid"
         lat_edges = _metadata_vector(attrs, "manifoldfields_lat_edges")
         lon_edges = _metadata_vector(attrs, "manifoldfields_lon_edges")
-        radius = haskey(attrs, "manifoldfields_radius") ?
-                 _metadata_float(attrs, "manifoldfields_radius") : 1.0
+        radius = _metadata_float(attrs, "manifoldfields_radius")
         mesh = LatLonGrid(lat_edges=lat_edges, lon_edges=lon_edges; R=radius)
         return _validate_latlon_grid!(mesh, ds)
     end
@@ -304,7 +315,14 @@ function _define_dimensions!(nc, ds::UGridDataset)
     return nc
 end
 
-function _nc_type(data)
+function _field_nc_type(data)
+    data isa Number && return typeof(data)
+    return eltype(data)
+end
+
+function _nc_type(var::UGridVariable)
+    haskey(var.attrs, "mesh") && return _field_nc_type(var.data)
+    data = var.data
     data isa Integer && return Int32
     data isa AbstractFloat && return Float64
     eltype(data) <: Integer && return Int32
@@ -320,7 +338,7 @@ function _write_attrs!(ncvar, attrs)
 end
 
 function _write_one_variable!(nc, name::String, var::UGridVariable)
-    ncvar = NCDatasets.defVar(nc, name, _nc_type(var.data), var.dims)
+    ncvar = NCDatasets.defVar(nc, name, _nc_type(var), var.dims)
     if var.dims == ()
         ncvar[] = var.data
     else
