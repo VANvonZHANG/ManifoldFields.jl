@@ -42,7 +42,7 @@ end
 @testset "UGRID field writer" begin
     g = small_grid()
 
-    nf = DiscreteField(NodeLoc, g, node_values(g), node_dims(g); name=:node_temp)
+    nf = DiscreteField(NodeLoc, g, node_values(g), node_dims(g); name = :node_temp)
     node_ds = to_ugrid(nf)
     @test haskey(node_ds.variables, "node_temp")
     node_temp = node_ds.variables["node_temp"]
@@ -52,7 +52,7 @@ end
     @test node_temp.dims == ("n_node",)
     @test node_temp.data == data(nf)
 
-    cf = DiscreteField(CellLoc, g, cell_values(g), cell_dims(g); name=:cell_area)
+    cf = DiscreteField(CellLoc, g, cell_values(g), cell_dims(g); name = :cell_area)
     cell_ds = to_ugrid(cf)
     @test haskey(cell_ds.variables, "cell_area")
     cell_area = cell_ds.variables["cell_area"]
@@ -73,7 +73,7 @@ end
     @test size(face_lon.data) == (num_cells(g),)
     @test size(face_lat.data) == (num_cells(g),)
 
-    ef = DiscreteField(EdgeLoc, g, edge_values(g), edge_dims(g); name=:edge_flux)
+    ef = DiscreteField(EdgeLoc, g, edge_values(g), edge_dims(g); name = :edge_flux)
     edge_ds = to_ugrid(ef)
     @test haskey(edge_ds.variables, "edge_flux")
     edge_flux = edge_ds.variables["edge_flux"]
@@ -106,15 +106,15 @@ end
     @test size(edge_lat.data) == (num_edges(g),)
 
     ntf = DiscreteField(NodeLoc, g, node_time_values(g), node_time_dims(g);
-                        name=:node_temp_by_time)
+        name = :node_temp_by_time)
     nt_ds = to_ugrid(ntf)
     @test nt_ds.variables["node_temp_by_time"].dims == ("n_node", "time")
 end
 
 @testset "UGRID own-file in-memory round-trip" begin
     g = small_grid()
-    f = DiscreteField(CellLoc, g, cell_values(g), cell_dims(g); name=:cell_area,
-                      metadata=Dict("units" => "m2"))
+    f = DiscreteField(CellLoc, g, cell_values(g), cell_dims(g); name = :cell_area,
+        metadata = Dict("units" => "m2"))
     ds = to_ugrid(f)
     mesh_attrs = ds.variables["Mesh2"].attrs
 
@@ -138,7 +138,7 @@ end
     @test_throws ArgumentError from_ugrid_mesh(missing_radius_ds)
 
     nf = DiscreteField(NodeLoc, g, node_time_values(g), node_time_dims(g);
-                       name=:node_temp_by_time)
+        name = :node_temp_by_time)
     loaded_node = from_ugrid(to_ugrid(nf))
     @test loaded_node isa DiscreteField{NodeLoc}
     @test location(loaded_node) === NodeLoc
@@ -148,8 +148,8 @@ end
 
 @testset "UGRID NetCDF save/load round-trip" begin
     g = small_grid()
-    f = DiscreteField(CellLoc, g, cell_values(g), cell_dims(g); name=:cell_area,
-                      metadata=Dict("units" => "m2"))
+    f = DiscreteField(CellLoc, g, cell_values(g), cell_dims(g); name = :cell_area,
+        metadata = Dict("units" => "m2"))
     path = tempname() * ".nc"
 
     save_ugrid(f, path)
@@ -166,7 +166,7 @@ end
     @test num_nodes(loaded_mesh) == num_nodes(g)
 
     int_values = fill(Int64(3_000_000_000), num_nodes(g))
-    int_field = DiscreteField(NodeLoc, g, int_values, node_dims(g); name=:node_count)
+    int_field = DiscreteField(NodeLoc, g, int_values, node_dims(g); name = :node_count)
     int_path = tempname() * ".nc"
     save_ugrid(int_field, int_path)
     loaded_int = load_ugrid(int_path)
@@ -175,19 +175,19 @@ end
 
     float32_values = Float32.(node_values(g))
     float32_field = DiscreteField(NodeLoc, g, float32_values, node_dims(g);
-                                  name=:node_temp_float32)
+        name = :node_temp_float32)
     float32_path = tempname() * ".nc"
     save_ugrid(float32_field, float32_path)
     loaded_float32 = load_ugrid(float32_path)
     @test data(loaded_float32) == data(float32_field)
     @test eltype(data(loaded_float32)) == Float32
 
-    @test_throws ArgumentError save_ugrid(f, tempname() * ".nc"; format=:unknown)
+    @test_throws ArgumentError save_ugrid(f, tempname() * ".nc"; format = :unknown)
 end
 
 @testset "UGRID NetCDF file signature" begin
     g = small_grid()
-    f = DiscreteField(NodeLoc, g, node_values(g), node_dims(g); name=:node_temp)
+    f = DiscreteField(NodeLoc, g, node_values(g), node_dims(g); name = :node_temp)
     path = tempname() * ".nc"
 
     save_ugrid(f, path)
@@ -201,23 +201,23 @@ end
 
 @testset "UGRID reader rejects invalid datasets" begin
     empty = UGridDataset(
-        Dict{String,ManifoldFields.UGridVariable}(),
-        Dict{String,Any}("Conventions" => "CF-1.11 UGRID-1.0"),
+        Dict{String, ManifoldFields.UGridVariable}(),
+        Dict{String, Any}("Conventions" => "CF-1.11 UGRID-1.0")
     )
     @test_throws ArgumentError from_ugrid_mesh(empty)
 
     g = small_grid()
-    f = DiscreteField(NodeLoc, g, node_values(g), node_dims(g); name=:node_temp)
+    f = DiscreteField(NodeLoc, g, node_values(g), node_dims(g); name = :node_temp)
 
     multi_data_ds = to_ugrid(f)
     multi_data_ds.variables["other_node_temp"] = ManifoldFields.UGridVariable(
         node_values(g),
         ("n_node",),
-        Dict{String,Any}(
+        Dict{String, Any}(
             "mesh" => "Mesh2",
             "location" => "node",
-            "coordinates" => "Mesh2_node_lon Mesh2_node_lat",
-        ),
+            "coordinates" => "Mesh2_node_lon Mesh2_node_lat"
+        )
     )
     @test_throws ArgumentError from_ugrid(multi_data_ds)
 
@@ -245,7 +245,7 @@ end
         "manifoldfields_grid_type",
         "manifoldfields_lat_edges",
         "manifoldfields_lon_edges",
-        "manifoldfields_radius",
+        "manifoldfields_radius"
     )
         missing_metadata_ds = to_ugrid(g)
         delete!(missing_metadata_ds.variables["Mesh2"].attrs, attr)
@@ -256,7 +256,7 @@ end
     mismatched_rank_ds.variables["node_temp"] = ManifoldFields.UGridVariable(
         node_values(g),
         ("n_node", "time"),
-        copy(mismatched_rank_ds.variables["node_temp"].attrs),
+        copy(mismatched_rank_ds.variables["node_temp"].attrs)
     )
     @test_throws DimensionMismatch from_ugrid(mismatched_rank_ds)
 end

@@ -3,13 +3,13 @@ import DimensionalData: AbstractDimArray, dims
 import ManifoldMeshes: AbstractLocation, AbstractManifoldMesh
 
 struct DiscreteField{
-    Loc<:AbstractLocation,
-    T,N,D<:Tuple,A<:AbstractArray{T,N},
-    M<:AbstractManifoldMesh,
+    Loc <: AbstractLocation,
+    T, N, D <: Tuple, A <: AbstractArray{T, N},
+    M <: AbstractManifoldMesh,
     R,
     NM,
-    MD,
-} <: AbstractDimArray{T,N,D,A}
+    MD
+} <: AbstractDimArray{T, N, D, A}
     data::A
     dims::D
     refdims::R
@@ -17,15 +17,15 @@ struct DiscreteField{
     metadata::MD
     mesh::M
     function DiscreteField{Loc}(
-        data::A,
-        dims::D,
-        refdims::R,
-        name::NM,
-        metadata::MD,
-        mesh::M,
-    ) where {Loc<:AbstractLocation,D<:Tuple,A<:AbstractArray{T,N},
-             M<:AbstractManifoldMesh,R,NM,MD} where {T,N}
-        return new{Loc,T,N,D,A,M,R,NM,MD}(data, dims, refdims, name, metadata, mesh)
+            data::A,
+            dims::D,
+            refdims::R,
+            name::NM,
+            metadata::MD,
+            mesh::M
+    ) where {Loc <: AbstractLocation, D <: Tuple, A <: AbstractArray{T, N},
+            M <: AbstractManifoldMesh, R, NM, MD} where {T, N}
+        return new{Loc, T, N, D, A, M, R, NM, MD}(data, dims, refdims, name, metadata, mesh)
     end
 end
 
@@ -40,8 +40,9 @@ DimensionalData.metadata(f::DiscreteField) = f.metadata
 DimensionalData.data(f::DiscreteField) = f.data
 Base.size(f::DiscreteField) = size(f.data)
 Base.size(f::DiscreteField, i::Integer) = size(f.data, i)
-Base.IndexStyle(::Type{<:DiscreteField{<:Any,<:Any,<:Any,<:Any,A}}) where {A} =
+function Base.IndexStyle(::Type{<:DiscreteField{<:Any, <:Any, <:Any, <:Any, A}}) where {A}
     Base.IndexStyle(A)
+end
 Base.parent(f::DiscreteField) = f.data
 
 function _dim_name(d)
@@ -53,7 +54,8 @@ function _location_axes(Loc, ds)
     return findall(d -> _dim_name(d) == locname, collect(ds))
 end
 
-function _validate_location_dims(::Type{Loc}, mesh, values, ds) where {Loc<:AbstractLocation}
+function _validate_location_dims(::Type{Loc}, mesh, values, ds) where {Loc <:
+                                                                       AbstractLocation}
     axes = _location_axes(Loc, ds)
     length(axes) == 1 ||
         throw(ArgumentError("expected exactly one $(location_dimname(Loc)) dimension, found $(length(axes))"))
@@ -74,14 +76,14 @@ function _validate_location_dims(::Type{Loc}, mesh, values, ds) where {Loc<:Abst
 end
 
 function DiscreteField(
-    ::Type{Loc},
-    mesh::M,
-    values::A,
-    ds;
-    name=:field,
-    metadata=nothing,
-    refdims=(),
-) where {Loc<:AbstractLocation,M<:AbstractManifoldMesh,A<:AbstractArray}
+        ::Type{Loc},
+        mesh::M,
+        values::A,
+        ds;
+        name = :field,
+        metadata = nothing,
+        refdims = ()
+) where {Loc <: AbstractLocation, M <: AbstractManifoldMesh, A <: AbstractArray}
     checked_dims = _validate_location_dims(Loc, mesh, values, ds)
     return DiscreteField{Loc}(
         values, checked_dims, refdims, name, metadata, mesh
@@ -89,50 +91,51 @@ function DiscreteField(
 end
 
 function DiscreteField(
-    ::Type{Loc},
-    mesh::M,
-    data::AbstractDimArray;
-    name=DimensionalData.name(data),
-    metadata=DimensionalData.metadata(data),
-    refdims=DimensionalData.refdims(data),
-) where {Loc<:AbstractLocation,M<:AbstractManifoldMesh}
+        ::Type{Loc},
+        mesh::M,
+        data::AbstractDimArray;
+        name = DimensionalData.name(data),
+        metadata = DimensionalData.metadata(data),
+        refdims = DimensionalData.refdims(data)
+) where {Loc <: AbstractLocation, M <: AbstractManifoldMesh}
     return DiscreteField(Loc, mesh, DimensionalData.data(data), DimensionalData.dims(data);
-                         name=name, metadata=metadata, refdims=refdims)
+        name = name, metadata = metadata, refdims = refdims)
 end
 
-function DiscreteField(::Type{Loc}, mesh::M, values::AbstractArray; kwargs...) where {
-    Loc<:AbstractLocation,
-    M<:AbstractManifoldMesh,
+function DiscreteField(::Type{Loc}, mesh::M, values::AbstractArray;
+        kwargs...) where {
+        Loc <: AbstractLocation,
+        M <: AbstractManifoldMesh
 }
     throw(ArgumentError("plain AbstractArray input requires explicit dims"))
 end
 
 function withmesh(f::DiscreteField{Loc}, mesh::AbstractManifoldMesh) where {Loc}
-    return DiscreteField(Loc, mesh, data(f), dims(f); name=DimensionalData.name(f),
-                         metadata=DimensionalData.metadata(f),
-                         refdims=DimensionalData.refdims(f))
+    return DiscreteField(Loc, mesh, data(f), dims(f); name = DimensionalData.name(f),
+        metadata = DimensionalData.metadata(f),
+        refdims = DimensionalData.refdims(f))
 end
 
 function DimensionalData.rebuild(
-    f::DiscreteField{Loc},
-    values::AbstractArray,
-    ds::Tuple=DimensionalData.dims(f),
-    refdims=DimensionalData.refdims(f),
-    name=DimensionalData.name(f),
-    metadata=DimensionalData.metadata(f),
+        f::DiscreteField{Loc},
+        values::AbstractArray,
+        ds::Tuple = DimensionalData.dims(f),
+        refdims = DimensionalData.refdims(f),
+        name = DimensionalData.name(f),
+        metadata = DimensionalData.metadata(f)
 ) where {Loc}
-    return DiscreteField(Loc, mesh(f), values, ds; name=name, metadata=metadata,
-                         refdims=refdims)
+    return DiscreteField(Loc, mesh(f), values, ds; name = name, metadata = metadata,
+        refdims = refdims)
 end
 
 function DimensionalData.rebuild(
-    f::DiscreteField{Loc};
-    data=parent(f),
-    dims=DimensionalData.dims(f),
-    refdims=DimensionalData.refdims(f),
-    name=DimensionalData.name(f),
-    metadata=DimensionalData.metadata(f),
+        f::DiscreteField{Loc};
+        data = parent(f),
+        dims = DimensionalData.dims(f),
+        refdims = DimensionalData.refdims(f),
+        name = DimensionalData.name(f),
+        metadata = DimensionalData.metadata(f)
 ) where {Loc}
-    return DiscreteField(Loc, mesh(f), data, dims; name=name, metadata=metadata,
-                         refdims=refdims)
+    return DiscreteField(Loc, mesh(f), data, dims; name = name, metadata = metadata,
+        refdims = refdims)
 end

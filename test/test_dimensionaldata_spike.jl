@@ -6,7 +6,7 @@ using Test
 @testset "DimensionalData compatibility spike" begin
     g = small_grid()
     f = DiscreteField(NodeLoc, g, node_time_values(g), node_time_dims(g);
-                      name=:temperature, metadata=Dict("units" => "K"))
+        name = :temperature, metadata = Dict("units" => "K"))
 
     @test dims(f) == node_time_dims(g)
     @test size(f) == (num_nodes(g), 3)

@@ -5,8 +5,8 @@ using Test
 
 @testset "location trait methods" begin
     g = LatLonGrid(
-        lat_edges=collect(range(-90.0, 90.0; length=3)),
-        lon_edges=collect(range(0.0, 360.0; length=5)),
+        lat_edges = collect(range(-90.0, 90.0; length = 3)),
+        lon_edges = collect(range(0.0, 360.0; length = 5))
     )
 
     @test location_dimname(NodeLoc) == Dim{:node}
