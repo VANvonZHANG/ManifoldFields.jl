@@ -37,3 +37,75 @@ using Test
         @test Tuple(face_nodes.data[c, :]) == cell_nodes(g, c)
     end
 end
+
+@testset "UGRID field writer" begin
+    g = small_grid()
+
+    nf = DiscreteField(NodeLoc, g, node_values(g), node_dims(g); name=:node_temp)
+    node_ds = to_ugrid(nf)
+    @test haskey(node_ds.variables, "node_temp")
+    node_temp = node_ds.variables["node_temp"]
+    @test node_temp.attrs["mesh"] == "Mesh2"
+    @test node_temp.attrs["location"] == "node"
+    @test node_temp.attrs["coordinates"] == "Mesh2_node_lon Mesh2_node_lat"
+    @test node_temp.dims == ("n_node",)
+    @test node_temp.data == data(nf)
+
+    cf = DiscreteField(CellLoc, g, cell_values(g), cell_dims(g); name=:cell_area)
+    cell_ds = to_ugrid(cf)
+    @test haskey(cell_ds.variables, "cell_area")
+    cell_area = cell_ds.variables["cell_area"]
+    @test cell_area.attrs["mesh"] == "Mesh2"
+    @test cell_area.attrs["location"] == "face"
+    @test cell_area.attrs["coordinates"] == "Mesh2_face_lon Mesh2_face_lat"
+    @test cell_area.dims == ("n_face",)
+    @test cell_area.data == data(cf)
+
+    cell_topology = cell_ds.variables["Mesh2"]
+    @test cell_topology.attrs["face_coordinates"] == "Mesh2_face_lon Mesh2_face_lat"
+    @test haskey(cell_ds.variables, "Mesh2_face_lon")
+    @test haskey(cell_ds.variables, "Mesh2_face_lat")
+    face_lon = cell_ds.variables["Mesh2_face_lon"]
+    face_lat = cell_ds.variables["Mesh2_face_lat"]
+    @test face_lon.dims == ("n_face",)
+    @test face_lat.dims == ("n_face",)
+    @test size(face_lon.data) == (num_cells(g),)
+    @test size(face_lat.data) == (num_cells(g),)
+
+    ef = DiscreteField(EdgeLoc, g, edge_values(g), edge_dims(g); name=:edge_flux)
+    edge_ds = to_ugrid(ef)
+    @test haskey(edge_ds.variables, "edge_flux")
+    edge_flux = edge_ds.variables["edge_flux"]
+    @test edge_flux.attrs["mesh"] == "Mesh2"
+    @test edge_flux.attrs["location"] == "edge"
+    @test edge_flux.attrs["coordinates"] == "Mesh2_edge_lon Mesh2_edge_lat"
+    @test edge_flux.dims == ("n_edge",)
+    @test edge_flux.data == data(ef)
+
+    edge_topology = edge_ds.variables["Mesh2"]
+    @test edge_topology.attrs["edge_node_connectivity"] == "Mesh2_edge_nodes"
+    @test edge_topology.attrs["edge_coordinates"] == "Mesh2_edge_lon Mesh2_edge_lat"
+    @test edge_topology.attrs["edge_dimension"] == "n_edge"
+    @test haskey(edge_ds.variables, "Mesh2_edge_nodes")
+    edge_nodes_var = edge_ds.variables["Mesh2_edge_nodes"]
+    @test edge_nodes_var.dims == ("n_edge", "Two")
+    @test edge_nodes_var.attrs["cf_role"] == "edge_node_connectivity"
+    @test edge_nodes_var.attrs["start_index"] == 1
+    @test size(edge_nodes_var.data) == (num_edges(g), 2)
+    for e in 1:num_edges(g)
+        @test Tuple(edge_nodes_var.data[e, :]) == edge_nodes(g, e)
+    end
+    @test haskey(edge_ds.variables, "Mesh2_edge_lon")
+    @test haskey(edge_ds.variables, "Mesh2_edge_lat")
+    edge_lon = edge_ds.variables["Mesh2_edge_lon"]
+    edge_lat = edge_ds.variables["Mesh2_edge_lat"]
+    @test edge_lon.dims == ("n_edge",)
+    @test edge_lat.dims == ("n_edge",)
+    @test size(edge_lon.data) == (num_edges(g),)
+    @test size(edge_lat.data) == (num_edges(g),)
+
+    ntf = DiscreteField(NodeLoc, g, node_time_values(g), node_time_dims(g);
+                        name=:node_temp_by_time)
+    nt_ds = to_ugrid(ntf)
+    @test nt_ds.variables["node_temp_by_time"].dims == ("n_node", "time")
+end
