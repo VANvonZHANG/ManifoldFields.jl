@@ -3,6 +3,7 @@ import DimensionalData
 import ManifoldMeshes:
     CellLoc,
     EdgeLoc,
+    LatLonGrid,
     NodeLoc,
     cell_centroid,
     cell_nodes,
@@ -33,17 +34,16 @@ end
 function to_ugrid(mesh)
     variables = Dict{String,UGridVariable}()
 
-    variables["Mesh2"] = UGridVariable(
-        0,
-        (),
-        Dict{String,Any}(
-            "cf_role" => "mesh_topology",
-            "topology_dimension" => 2,
-            "node_coordinates" => "Mesh2_node_lon Mesh2_node_lat",
-            "face_node_connectivity" => "Mesh2_face_nodes",
-            "face_dimension" => "n_face",
-        ),
+    mesh_attrs = Dict{String,Any}(
+        "cf_role" => "mesh_topology",
+        "topology_dimension" => 2,
+        "node_coordinates" => "Mesh2_node_lon Mesh2_node_lat",
+        "face_node_connectivity" => "Mesh2_face_nodes",
+        "face_dimension" => "n_face",
     )
+    _add_own_file_mesh_metadata!(mesh_attrs, mesh)
+
+    variables["Mesh2"] = UGridVariable(0, (), mesh_attrs)
 
     node_lon = Vector{Float64}(undef, num_nodes(mesh))
     node_lat = Vector{Float64}(undef, num_nodes(mesh))
@@ -76,6 +76,16 @@ function to_ugrid(mesh)
         variables,
         Dict{String,Any}("Conventions" => "CF-1.11 UGRID-1.0"),
     )
+end
+
+_add_own_file_mesh_metadata!(attrs, mesh) = attrs
+
+function _add_own_file_mesh_metadata!(attrs, mesh::LatLonGrid)
+    attrs["manifoldfields_grid_type"] = "LatLonGrid"
+    attrs["manifoldfields_lat_edges"] = copy(mesh.lat_edges)
+    attrs["manifoldfields_lon_edges"] = copy(mesh.lon_edges)
+    attrs["manifoldfields_radius"] = mesh.R
+    return attrs
 end
 
 function to_ugrid(f::DiscreteField)
@@ -173,22 +183,200 @@ function _add_location_coordinates!(ds::UGridDataset, mesh, ::Type{EdgeLoc})
     return nothing
 end
 
-function from_ugrid(args...; kwargs...)
-    throw(ErrorException("from_ugrid is implemented in a later task"))
+function _find_data_vars(ds::UGridDataset)
+    return [name for (name, var) in ds.variables if haskey(var.attrs, "mesh")]
 end
 
-function from_ugrid_mesh(args...; kwargs...)
-    throw(ErrorException("from_ugrid_mesh is implemented in a later task"))
+function _require_var(ds::UGridDataset, name::String)
+    haskey(ds.variables, name) ||
+        throw(ArgumentError("UGRID dataset is missing variable $name"))
+    return ds.variables[name]
 end
 
-function save_ugrid(args...; kwargs...)
-    throw(ErrorException("save_ugrid is implemented in a later task"))
+function _require_attr(var::UGridVariable, name::String)
+    haskey(var.attrs, name) ||
+        throw(ArgumentError("UGRID variable is missing attribute $name"))
+    return var.attrs[name]
 end
 
-function load_ugrid(args...; kwargs...)
-    throw(ErrorException("load_ugrid is implemented in a later task"))
+function _loc_from_ugrid(location)
+    location == "node" && return NodeLoc
+    location == "edge" && return EdgeLoc
+    location == "face" && return CellLoc
+    throw(ArgumentError("unsupported UGRID location $location"))
 end
 
-function load_ugrid_mesh(args...; kwargs...)
-    throw(ErrorException("load_ugrid_mesh is implemented in a later task"))
+function _dims_from_ugrid(var::UGridVariable, Loc)
+    return Tuple(
+        DimensionalData.Dim{Symbol(d == ugrid_dimname(Loc) ?
+                                   DimensionalData.name(location_dimname(Loc)) : d)}(
+            1:size(var.data, i),
+        ) for (i, d) in enumerate(var.dims)
+    )
 end
+
+function _metadata_vector(attrs, name::String)
+    haskey(attrs, name) || throw(ArgumentError("UGRID Mesh2 is missing attribute $name"))
+    value = attrs[name]
+    value isa AbstractVector && return Vector{Float64}(value)
+    throw(ArgumentError("UGRID Mesh2 attribute $name must be a vector"))
+end
+
+function _metadata_float(attrs, name::String)
+    haskey(attrs, name) || throw(ArgumentError("UGRID Mesh2 is missing attribute $name"))
+    value = attrs[name]
+    value isa Number && return Float64(value)
+    throw(ArgumentError("UGRID Mesh2 attribute $name must be numeric"))
+end
+
+function _validate_latlon_grid!(mesh, ds::UGridDataset)
+    node_lon = _require_var(ds, "Mesh2_node_lon")
+    face_nodes = _require_var(ds, "Mesh2_face_nodes")
+    n_node = length(node_lon.data)
+    n_face = size(face_nodes.data, 1)
+    num_nodes(mesh) == n_node ||
+        throw(ArgumentError("reconstructed mesh node count $(num_nodes(mesh)) != UGRID node count $n_node"))
+    num_cells(mesh) == n_face ||
+        throw(ArgumentError("reconstructed mesh cell count $(num_cells(mesh)) != UGRID face count $n_face"))
+    return mesh
+end
+
+function from_ugrid_mesh(ds::UGridDataset; grid_type=nothing)
+    meshvar = _require_var(ds, "Mesh2")
+    _require_attr(meshvar, "cf_role") == "mesh_topology" ||
+        throw(ArgumentError("Mesh2 is missing cf_role=mesh_topology"))
+    _require_attr(meshvar, "topology_dimension") == 2 ||
+        throw(ArgumentError("Mesh2 must have topology_dimension=2"))
+    _require_attr(meshvar, "node_coordinates")
+    _require_attr(meshvar, "face_node_connectivity")
+    _require_attr(meshvar, "face_dimension")
+    _require_var(ds, "Mesh2_node_lon")
+    _require_var(ds, "Mesh2_node_lat")
+    _require_var(ds, "Mesh2_face_nodes")
+
+    attrs = meshvar.attrs
+    metadata_grid_type = get(attrs, "manifoldfields_grid_type", nothing)
+    requested_grid_type = grid_type === nothing ? metadata_grid_type : grid_type
+    if requested_grid_type == "LatLonGrid" &&
+       haskey(attrs, "manifoldfields_lat_edges") &&
+       haskey(attrs, "manifoldfields_lon_edges")
+        lat_edges = _metadata_vector(attrs, "manifoldfields_lat_edges")
+        lon_edges = _metadata_vector(attrs, "manifoldfields_lon_edges")
+        radius = haskey(attrs, "manifoldfields_radius") ?
+                 _metadata_float(attrs, "manifoldfields_radius") : 1.0
+        mesh = LatLonGrid(lat_edges=lat_edges, lon_edges=lon_edges; R=radius)
+        return _validate_latlon_grid!(mesh, ds)
+    end
+
+    throw(ArgumentError("cannot reconstruct mesh without supported ManifoldFields mesh metadata"))
+end
+
+function from_ugrid(ds::UGridDataset; grid_type=nothing)
+    data_vars = _find_data_vars(ds)
+    length(data_vars) == 1 ||
+        throw(ArgumentError("expected exactly one UGRID data variable with mesh attribute, found $(length(data_vars))"))
+    varname = only(data_vars)
+    var = ds.variables[varname]
+    _require_attr(var, "mesh") == "Mesh2" ||
+        throw(ArgumentError("UGRID data variable $varname references unsupported mesh"))
+    Loc = _loc_from_ugrid(_require_attr(var, "location"))
+    mesh = from_ugrid_mesh(ds; grid_type=grid_type)
+    return DiscreteField(Loc, mesh, var.data, _dims_from_ugrid(var, Loc);
+                         name=Symbol(varname), metadata=var.attrs)
+end
+
+function _define_dimensions!(nc, ds::UGridDataset)
+    lengths = Dict{String,Int}()
+    for var in values(ds.variables)
+        for (i, d) in enumerate(var.dims)
+            len = size(var.data, i)
+            if haskey(lengths, d)
+                lengths[d] == len ||
+                    throw(DimensionMismatch("dimension $d has inconsistent lengths $(lengths[d]) and $len"))
+            else
+                lengths[d] = len
+            end
+        end
+    end
+    for (name, len) in lengths
+        NCDatasets.defDim(nc, name, len)
+    end
+    return nc
+end
+
+function _nc_type(data)
+    data isa Integer && return Int32
+    data isa AbstractFloat && return Float64
+    eltype(data) <: Integer && return Int32
+    eltype(data) <: AbstractFloat && return Float64
+    return eltype(data)
+end
+
+function _write_attrs!(ncvar, attrs)
+    for (k, v) in attrs
+        ncvar.attrib[k] = v
+    end
+    return ncvar
+end
+
+function _write_one_variable!(nc, name::String, var::UGridVariable)
+    ncvar = NCDatasets.defVar(nc, name, _nc_type(var.data), var.dims)
+    if var.dims == ()
+        ncvar[] = var.data
+    else
+        ncvar[:] = var.data
+    end
+    _write_attrs!(ncvar, var.attrs)
+    return nc
+end
+
+function _write_variables!(nc, ds::UGridDataset)
+    for (name, var) in ds.variables
+        _write_one_variable!(nc, name, var)
+    end
+    return nc
+end
+
+function save_ugrid(x, path::AbstractString; format=:netcdf)
+    format == :netcdf || throw(ArgumentError("v0 only supports format=:netcdf"))
+    ds = to_ugrid(x)
+    NCDatasets.NCDataset(path, "c") do nc
+        for (k, v) in ds.attributes
+            nc.attrib[k] = v
+        end
+        _define_dimensions!(nc, ds)
+        _write_variables!(nc, ds)
+    end
+    return nothing
+end
+
+function _read_var_data(v)
+    names = NCDatasets.dimnames(v)
+    indices = ntuple(_ -> Colon(), length(names))
+    return isempty(indices) ? v[] : v[indices...]
+end
+
+function _read_ugrid_dataset(path::AbstractString)
+    vars = Dict{String,UGridVariable}()
+    attrs = Dict{String,Any}()
+    NCDatasets.NCDataset(path, "r") do nc
+        for (k, v) in nc.attrib
+            attrs[String(k)] = v
+        end
+        for name in keys(nc)
+            v = nc[name]
+            vars[String(name)] = UGridVariable(
+                _read_var_data(v),
+                Tuple(String.(NCDatasets.dimnames(v))),
+                Dict{String,Any}(String(k) => val for (k, val) in v.attrib),
+            )
+        end
+    end
+    return UGridDataset(vars, attrs)
+end
+
+load_ugrid(path::AbstractString; grid_type=nothing) =
+    from_ugrid(_read_ugrid_dataset(path); grid_type=grid_type)
+
+load_ugrid_mesh(path::AbstractString; grid_type=nothing) =
+    from_ugrid_mesh(_read_ugrid_dataset(path); grid_type=grid_type)
