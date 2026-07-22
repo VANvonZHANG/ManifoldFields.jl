@@ -13,4 +13,5 @@ end
     include("test_dimensionaldata_spike.jl")
     include("test_broadcast.jl")
     include("test_interpolate.jl")
+    include("test_ugrid.jl")
 end
