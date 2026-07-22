@@ -1,27 +1,27 @@
 import NCDatasets
 import DimensionalData
 import ManifoldMeshes:
-    CellLoc,
-    EdgeLoc,
-    LatLonGrid,
-    NodeLoc,
-    cell_centroid,
-    cell_nodes,
-    edge_nodes,
-    node_coordinates,
-    num_cells,
-    num_edges,
-    num_nodes
+                       CellLoc,
+                       EdgeLoc,
+                       LatLonGrid,
+                       NodeLoc,
+                       cell_centroid,
+                       cell_nodes,
+                       edge_nodes,
+                       node_coordinates,
+                       num_cells,
+                       num_edges,
+                       num_nodes
 
 struct UGridVariable{T}
     data::T
     dims::Tuple{Vararg{String}}
-    attrs::Dict{String,Any}
+    attrs::Dict{String, Any}
 end
 
 struct UGridDataset
-    variables::Dict{String,UGridVariable}
-    attributes::Dict{String,Any}
+    variables::Dict{String, UGridVariable}
+    attributes::Dict{String, Any}
 end
 
 function _lonlat(p)
@@ -32,14 +32,14 @@ function _lonlat(p)
 end
 
 function to_ugrid(mesh)
-    variables = Dict{String,UGridVariable}()
+    variables = Dict{String, UGridVariable}()
 
-    mesh_attrs = Dict{String,Any}(
+    mesh_attrs = Dict{String, Any}(
         "cf_role" => "mesh_topology",
         "topology_dimension" => 2,
         "node_coordinates" => "Mesh2_node_lon Mesh2_node_lat",
         "face_node_connectivity" => "Mesh2_face_nodes",
-        "face_dimension" => "n_face",
+        "face_dimension" => "n_face"
     )
     _add_own_file_mesh_metadata!(mesh_attrs, mesh)
 
@@ -54,12 +54,12 @@ function to_ugrid(mesh)
     variables["Mesh2_node_lon"] = UGridVariable(
         node_lon,
         ("n_node",),
-        Dict{String,Any}("standard_name" => "longitude", "units" => "degrees_east"),
+        Dict{String, Any}("standard_name" => "longitude", "units" => "degrees_east")
     )
     variables["Mesh2_node_lat"] = UGridVariable(
         node_lat,
         ("n_node",),
-        Dict{String,Any}("standard_name" => "latitude", "units" => "degrees_north"),
+        Dict{String, Any}("standard_name" => "latitude", "units" => "degrees_north")
     )
 
     face_nodes = Matrix{Int}(undef, num_cells(mesh), 4)
@@ -69,12 +69,12 @@ function to_ugrid(mesh)
     variables["Mesh2_face_nodes"] = UGridVariable(
         face_nodes,
         ("n_face", "n_max_face_nodes"),
-        Dict{String,Any}("cf_role" => "face_node_connectivity", "start_index" => 1),
+        Dict{String, Any}("cf_role" => "face_node_connectivity", "start_index" => 1)
     )
 
     return UGridDataset(
         variables,
-        Dict{String,Any}("Conventions" => "CF-1.11 UGRID-1.0"),
+        Dict{String, Any}("Conventions" => "CF-1.11 UGRID-1.0")
     )
 end
 
@@ -99,13 +99,13 @@ function to_ugrid(f::DiscreteField)
     ds.variables[varname] = UGridVariable(
         data(f),
         var_dims,
-        _data_var_attrs(f, Loc, coordinates),
+        _data_var_attrs(f, Loc, coordinates)
     )
     return ds
 end
 
 function _metadata_attrs(metadata)
-    attrs = Dict{String,Any}()
+    attrs = Dict{String, Any}()
     metadata === nothing && return attrs
     metadata isa AbstractDict || return attrs
     for (k, v) in metadata
@@ -147,12 +147,12 @@ function _add_location_coordinates!(ds::UGridDataset, mesh, ::Type{CellLoc})
     ds.variables["Mesh2_face_lon"] = UGridVariable(
         lon,
         ("n_face",),
-        Dict{String,Any}("standard_name" => "longitude", "units" => "degrees_east"),
+        Dict{String, Any}("standard_name" => "longitude", "units" => "degrees_east")
     )
     ds.variables["Mesh2_face_lat"] = UGridVariable(
         lat,
         ("n_face",),
-        Dict{String,Any}("standard_name" => "latitude", "units" => "degrees_north"),
+        Dict{String, Any}("standard_name" => "latitude", "units" => "degrees_north")
     )
     ds.variables["Mesh2"].attrs["face_coordinates"] = "Mesh2_face_lon Mesh2_face_lat"
     return nothing
@@ -177,17 +177,17 @@ function _add_location_coordinates!(ds::UGridDataset, mesh, ::Type{EdgeLoc})
     ds.variables["Mesh2_edge_nodes"] = UGridVariable(
         edge_node_data,
         ("n_edge", "Two"),
-        Dict{String,Any}("cf_role" => "edge_node_connectivity", "start_index" => 1),
+        Dict{String, Any}("cf_role" => "edge_node_connectivity", "start_index" => 1)
     )
     ds.variables["Mesh2_edge_lon"] = UGridVariable(
         lon,
         ("n_edge",),
-        Dict{String,Any}("standard_name" => "longitude", "units" => "degrees_east"),
+        Dict{String, Any}("standard_name" => "longitude", "units" => "degrees_east")
     )
     ds.variables["Mesh2_edge_lat"] = UGridVariable(
         lat,
         ("n_edge",),
-        Dict{String,Any}("standard_name" => "latitude", "units" => "degrees_north"),
+        Dict{String, Any}("standard_name" => "latitude", "units" => "degrees_north")
     )
 
     topology_attrs = ds.variables["Mesh2"].attrs
@@ -224,8 +224,8 @@ function _dims_from_ugrid(var::UGridVariable, Loc)
     length(var.dims) == ndims(var.data) ||
         throw(
             DimensionMismatch(
-                "UGRID variable dims rank $(length(var.dims)) does not match data ndims $(ndims(var.data))",
-            ),
+            "UGRID variable dims rank $(length(var.dims)) does not match data ndims $(ndims(var.data))",
+        ),
         )
     return Tuple(
         DimensionalData.Dim{Symbol(d == ugrid_dimname(Loc) ?
@@ -261,7 +261,7 @@ function _validate_latlon_grid!(mesh, ds::UGridDataset)
     return mesh
 end
 
-function from_ugrid_mesh(ds::UGridDataset; grid_type=nothing)
+function from_ugrid_mesh(ds::UGridDataset; grid_type = nothing)
     meshvar = _require_var(ds, "Mesh2")
     _require_attr(meshvar, "cf_role") == "mesh_topology" ||
         throw(ArgumentError("Mesh2 is missing cf_role=mesh_topology"))
@@ -281,14 +281,14 @@ function from_ugrid_mesh(ds::UGridDataset; grid_type=nothing)
         lat_edges = _metadata_vector(attrs, "manifoldfields_lat_edges")
         lon_edges = _metadata_vector(attrs, "manifoldfields_lon_edges")
         radius = _metadata_float(attrs, "manifoldfields_radius")
-        mesh = LatLonGrid(lat_edges=lat_edges, lon_edges=lon_edges; R=radius)
+        mesh = LatLonGrid(lat_edges = lat_edges, lon_edges = lon_edges; R = radius)
         return _validate_latlon_grid!(mesh, ds)
     end
 
     throw(ArgumentError("cannot reconstruct mesh without supported ManifoldFields mesh metadata"))
 end
 
-function from_ugrid(ds::UGridDataset; grid_type=nothing)
+function from_ugrid(ds::UGridDataset; grid_type = nothing)
     data_vars = _find_data_vars(ds)
     length(data_vars) == 1 ||
         throw(ArgumentError("expected exactly one UGRID data variable with mesh attribute, found $(length(data_vars))"))
@@ -297,13 +297,13 @@ function from_ugrid(ds::UGridDataset; grid_type=nothing)
     _require_attr(var, "mesh") == "Mesh2" ||
         throw(ArgumentError("UGRID data variable $varname references unsupported mesh"))
     Loc = _loc_from_ugrid(_require_attr(var, "location"))
-    mesh = from_ugrid_mesh(ds; grid_type=grid_type)
+    mesh = from_ugrid_mesh(ds; grid_type = grid_type)
     return DiscreteField(Loc, mesh, var.data, _dims_from_ugrid(var, Loc);
-                         name=Symbol(varname), metadata=var.attrs)
+        name = Symbol(varname), metadata = var.attrs)
 end
 
 function _define_dimensions!(nc, ds::UGridDataset)
-    lengths = Dict{String,Int}()
+    lengths = Dict{String, Int}()
     for var in values(ds.variables)
         for (i, d) in enumerate(var.dims)
             len = size(var.data, i)
@@ -361,7 +361,7 @@ function _write_variables!(nc, ds::UGridDataset)
     return nc
 end
 
-function save_ugrid(x, path::AbstractString; format=:netcdf)
+function save_ugrid(x, path::AbstractString; format = :netcdf)
     format == :netcdf || throw(ArgumentError("v0 only supports format=:netcdf"))
     ds = to_ugrid(x)
     NCDatasets.NCDataset(path, "c") do nc
@@ -381,8 +381,8 @@ function _read_var_data(v)
 end
 
 function _read_ugrid_dataset(path::AbstractString)
-    vars = Dict{String,UGridVariable}()
-    attrs = Dict{String,Any}()
+    vars = Dict{String, UGridVariable}()
+    attrs = Dict{String, Any}()
     NCDatasets.NCDataset(path, "r") do nc
         for (k, v) in nc.attrib
             attrs[String(k)] = v
@@ -392,15 +392,17 @@ function _read_ugrid_dataset(path::AbstractString)
             vars[String(name)] = UGridVariable(
                 _read_var_data(v),
                 Tuple(String.(NCDatasets.dimnames(v))),
-                Dict{String,Any}(String(k) => val for (k, val) in v.attrib),
+                Dict{String, Any}(String(k) => val for (k, val) in v.attrib)
             )
         end
     end
     return UGridDataset(vars, attrs)
 end
 
-load_ugrid(path::AbstractString; grid_type=nothing) =
-    from_ugrid(_read_ugrid_dataset(path); grid_type=grid_type)
+function load_ugrid(path::AbstractString; grid_type = nothing)
+    from_ugrid(_read_ugrid_dataset(path); grid_type = grid_type)
+end
 
-load_ugrid_mesh(path::AbstractString; grid_type=nothing) =
-    from_ugrid_mesh(_read_ugrid_dataset(path); grid_type=grid_type)
+function load_ugrid_mesh(path::AbstractString; grid_type = nothing)
+    from_ugrid_mesh(_read_ugrid_dataset(path); grid_type = grid_type)
+end

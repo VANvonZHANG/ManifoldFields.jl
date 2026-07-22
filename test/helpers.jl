@@ -1,10 +1,10 @@
 using DimensionalData
 using ManifoldMeshes
 
-function small_grid(; nlat=2, nlon=4)
+function small_grid(; nlat = 2, nlon = 4)
     return LatLonGrid(
-        lat_edges=collect(range(-90.0, 90.0; length=nlat + 1)),
-        lon_edges=collect(range(0.0, 360.0; length=nlon + 1)),
+        lat_edges = collect(range(-90.0, 90.0; length = nlat + 1)),
+        lon_edges = collect(range(0.0, 360.0; length = nlon + 1))
     )
 end
 

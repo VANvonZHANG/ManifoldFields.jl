@@ -5,11 +5,11 @@ using Test
 
 @testset "DiscreteField broadcast arithmetic" begin
     g = small_grid()
-    f = DiscreteField(NodeLoc, g, node_values(g), node_dims(g); name=:a,
-                      refdims=(Dim{:time}(1:1),),
-                      metadata=Dict("units" => "K"))
-    h = DiscreteField(NodeLoc, g, 2 .* node_values(g), node_dims(g); name=:b,
-                      metadata=Dict("units" => "K"))
+    f = DiscreteField(NodeLoc, g, node_values(g), node_dims(g); name = :a,
+        refdims = (Dim{:time}(1:1),),
+        metadata = Dict("units" => "K"))
+    h = DiscreteField(NodeLoc, g, 2 .* node_values(g), node_dims(g); name = :b,
+        metadata = Dict("units" => "K"))
 
     r = f .+ h
     @test r isa DiscreteField{NodeLoc}

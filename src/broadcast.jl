@@ -3,23 +3,28 @@ import Base.Broadcast: AbstractArrayStyle, BroadcastStyle, Broadcasted, DefaultA
 struct DiscreteFieldStyle{N} <: AbstractArrayStyle{N} end
 
 DiscreteFieldStyle{N}(::Val{N}) where {N} = DiscreteFieldStyle{N}()
-function DiscreteFieldStyle{N}(::Val{M}) where {N,M}
+function DiscreteFieldStyle{N}(::Val{M}) where {N, M}
     throw(DimensionMismatch(
         "DiscreteField broadcast must preserve rank/dims; field rank $N cannot produce rank $M",
     ))
 end
 
-BroadcastStyle(::Type{<:DiscreteField{<:Any,<:Any,N}}) where {N} = DiscreteFieldStyle{N}()
-BroadcastStyle(::DiscreteFieldStyle{N}, ::DefaultArrayStyle{N}) where {N} =
+BroadcastStyle(::Type{<:DiscreteField{<:Any, <:Any, N}}) where {N} = DiscreteFieldStyle{N}()
+function BroadcastStyle(::DiscreteFieldStyle{N}, ::DefaultArrayStyle{N}) where {N}
     DiscreteFieldStyle{N}()
-BroadcastStyle(::DefaultArrayStyle{N}, ::DiscreteFieldStyle{N}) where {N} =
+end
+function BroadcastStyle(::DefaultArrayStyle{N}, ::DiscreteFieldStyle{N}) where {N}
     DiscreteFieldStyle{N}()
-BroadcastStyle(::DiscreteFieldStyle{N}, ::DiscreteFieldStyle{N}) where {N} =
+end
+function BroadcastStyle(::DiscreteFieldStyle{N}, ::DiscreteFieldStyle{N}) where {N}
     DiscreteFieldStyle{N}()
-BroadcastStyle(::DiscreteFieldStyle{N}, ::DimensionalData.DimensionalStyle) where {N} =
+end
+function BroadcastStyle(::DiscreteFieldStyle{N}, ::DimensionalData.DimensionalStyle) where {N}
     DiscreteFieldStyle{N}()
-BroadcastStyle(::DimensionalData.DimensionalStyle, ::DiscreteFieldStyle{N}) where {N} =
+end
+function BroadcastStyle(::DimensionalData.DimensionalStyle, ::DiscreteFieldStyle{N}) where {N}
     DiscreteFieldStyle{N}()
+end
 
 function Base.copy(bc::Broadcasted{DiscreteFieldStyle{N}}) where {N}
     fields = Any[]
@@ -36,9 +41,9 @@ function Base.copy(bc::Broadcasted{DiscreteFieldStyle{N}}) where {N}
         mesh(anchor),
         values,
         dims(anchor);
-        name=DimensionalData.name(anchor),
-        metadata=DimensionalData.metadata(anchor),
-        refdims=DimensionalData.refdims(anchor),
+        name = DimensionalData.name(anchor),
+        metadata = DimensionalData.metadata(anchor),
+        refdims = DimensionalData.refdims(anchor)
     )
 end
 
