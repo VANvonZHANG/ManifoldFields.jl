@@ -3,8 +3,6 @@ using ManifoldFields
 using ManifoldMeshes
 using Test
 
-include("helpers.jl")
-
 @testset "DiscreteField broadcast arithmetic" begin
     g = small_grid()
     f = DiscreteField(NodeLoc, g, node_values(g), node_dims(g); name=:a,
@@ -18,6 +16,8 @@ include("helpers.jl")
     @test location(r) === NodeLoc
     @test data(r) == 3 .* node_values(g)
     @test dims(r) == node_dims(g)
+    @test DimensionalData.name(r) == :a
+    @test DimensionalData.metadata(r)["units"] == "K"
 
     s = sin.(f)
     @test s isa DiscreteField{NodeLoc}
@@ -27,10 +27,22 @@ include("helpers.jl")
     t = 2 .* f
     @test t isa DiscreteField{NodeLoc}
     @test data(t) == 2 .* node_values(g)
+    @test DimensionalData.name(t) == :a
+
+    arr_result = f .+ ones(num_nodes(g))
+    @test arr_result isa DiscreteField{NodeLoc}
+    @test data(arr_result) == node_values(g) .+ 1
+
+    dim_array = DimArray(ones(num_nodes(g)), node_dims(g))
+    dim_result = f .+ dim_array
+    @test dim_result isa DiscreteField{NodeLoc}
+    @test mesh(dim_result) === g
+    @test data(dim_result) == node_values(g) .+ 1
 
     g2 = small_grid()
     same_shape_other_mesh = DiscreteField(NodeLoc, g2, node_values(g2), node_dims(g2))
     @test_throws DimensionMismatch f .+ same_shape_other_mesh
+    @test_throws DimensionMismatch f .+ same_shape_other_mesh .+ dim_array
 
     cell_f = DiscreteField(CellLoc, g, cell_values(g), cell_dims(g))
     @test_throws DimensionMismatch f .+ cell_f

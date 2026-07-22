@@ -3,8 +3,6 @@ using ManifoldFields
 using ManifoldMeshes
 using Test
 
-include("helpers.jl")
-
 @testset "DiscreteField construction and accessors" begin
     g = small_grid()
 

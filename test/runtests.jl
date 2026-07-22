@@ -7,6 +7,7 @@ using Test
 end
 
 @testset "ManifoldFields.jl" begin
+    include("helpers.jl")
     include("test_locations.jl")
     include("test_field_construction.jl")
     include("test_dimensionaldata_spike.jl")
