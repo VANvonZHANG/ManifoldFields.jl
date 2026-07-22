@@ -3,6 +3,11 @@ import Base.Broadcast: AbstractArrayStyle, BroadcastStyle, Broadcasted, DefaultA
 struct DiscreteFieldStyle{N} <: AbstractArrayStyle{N} end
 
 DiscreteFieldStyle{N}(::Val{N}) where {N} = DiscreteFieldStyle{N}()
+function DiscreteFieldStyle{N}(::Val{M}) where {N,M}
+    throw(DimensionMismatch(
+        "DiscreteField broadcast must preserve rank/dims; field rank $N cannot produce rank $M",
+    ))
+end
 
 BroadcastStyle(::Type{<:DiscreteField{<:Any,<:Any,N}}) where {N} = DiscreteFieldStyle{N}()
 BroadcastStyle(::DiscreteFieldStyle{N}, ::DefaultArrayStyle{N}) where {N} =
@@ -23,6 +28,7 @@ function Base.copy(bc::Broadcasted{DiscreteFieldStyle{N}}) where {N}
 
     anchor = first(fields)
     _validate_broadcast_fields(anchor, fields)
+    _validate_broadcast_dimarrays(anchor, bc)
 
     values = _materialize_values(_unwrap_fields(bc))
     return DiscreteField(
@@ -47,6 +53,21 @@ function _validate_broadcast_fields(anchor::DiscreteField, fields)
     end
     return nothing
 end
+
+function _validate_broadcast_dimarrays(anchor::DiscreteField, bc::Broadcasted)
+    foreach(arg -> _validate_broadcast_dimarrays(anchor, arg), bc.args)
+    return nothing
+end
+function _validate_broadcast_dimarrays(anchor::DiscreteField, ex::Base.Broadcast.Extruded)
+    return _validate_broadcast_dimarrays(anchor, ex.x)
+end
+function _validate_broadcast_dimarrays(anchor::DiscreteField, x::DimensionalData.AbstractDimArray)
+    x isa DiscreteField && return nothing
+    DimensionalData.dims(x) == dims(anchor) ||
+        throw(DimensionMismatch("broadcast requires DimArray arguments to match field dimensions"))
+    return nothing
+end
+_validate_broadcast_dimarrays(::DiscreteField, _) = nothing
 
 function _collect_fields!(fields, bc::Broadcasted)
     foreach(arg -> _collect_fields!(fields, arg), bc.args)
