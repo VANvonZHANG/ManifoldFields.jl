@@ -7,7 +7,7 @@ DimensionalData = "0703355e-b756-11e9-17c0-8b28908087d0"
 ManifoldMeshes = "d2a7aed9-80bb-46a9-9a56-e170a93cc177"
 NCDatasets = "85f8d34a-cbdd-5861-8df4-14fed0d494ab"
 StaticArrays = "90137ffa-7385-5640-81b9-e52037218182"
-YAXArrays = "c21b50f5-a021-445e-a6bb-8c82a528c804"
+YAXArrays = "c21b50f5-aa40-41ea-b809-c0f5e47bfa5c"
 
 [compat]
 Aqua = "0.8"
