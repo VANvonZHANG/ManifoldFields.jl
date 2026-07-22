@@ -10,4 +10,5 @@ end
     include("test_locations.jl")
     include("test_field_construction.jl")
     include("test_dimensionaldata_spike.jl")
+    include("test_broadcast.jl")
 end
