@@ -221,6 +221,12 @@ function _loc_from_ugrid(location)
 end
 
 function _dims_from_ugrid(var::UGridVariable, Loc)
+    length(var.dims) == ndims(var.data) ||
+        throw(
+            DimensionMismatch(
+                "UGRID variable dims rank $(length(var.dims)) does not match data ndims $(ndims(var.data))",
+            ),
+        )
     return Tuple(
         DimensionalData.Dim{Symbol(d == ugrid_dimname(Loc) ?
                                    DimensionalData.name(location_dimname(Loc)) : d)}(
