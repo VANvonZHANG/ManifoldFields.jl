@@ -15,8 +15,10 @@ makedocs(
     warnonly = [:missing_docs]
 )
 
-deploydocs(
-    repo = "github.com/VANvonZHANG/ManifoldFields.jl.git",
-    devbranch = "main",
-    push_preview = true
-)
+if get(ENV, "MANIFOLDFIELDS_DOCS_DEPLOY", "false") == "true"
+    deploydocs(
+        repo = "github.com/VANvonZHANG/ManifoldFields.jl.git",
+        devbranch = "main",
+        push_preview = true
+    )
+end
