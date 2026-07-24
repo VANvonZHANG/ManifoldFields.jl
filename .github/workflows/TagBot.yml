@@ -1,0 +1,47 @@
+name: TagBot
+
+on:
+  issue_comment:
+    types:
+      - created
+  workflow_dispatch:
+    inputs:
+      lookback:
+        default: 3
+  schedule:
+    - cron: "0 0 * * *"
+
+jobs:
+  TagBot:
+    if: github.event_name == 'workflow_dispatch' || github.actor == 'JuliaTagBot'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: JuliaRegistries/TagBot@v1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          ssh: ${{ secrets.DOCUMENTER_KEY }}
+      - name: Prepend CHANGELOG to release notes
+        run: |
+          sleep 15
+          TAG=$(gh release list --repo "$GITHUB_REPOSITORY" --limit 1 --json tagName -q '.[0].tagName')
+          if [ -z "$TAG" ]; then
+            git fetch --tags --prune-tags --force
+            TAG=$(git describe --tags --abbrev=0 2>/dev/null || true)
+          fi
+          if [ -z "$TAG" ]; then
+            echo "Could not determine tag name, skipping CHANGELOG prepend"
+            exit 0
+          fi
+          VERSION="${TAG#v}"
+          NOTES=$(awk '/^## \['"$VERSION"'\]/{flag=1;next}/^## \[/{flag=0}flag' CHANGELOG.md | sed '/./,$!d' | sed -n ':a;N;$!ba;s/\n*$//;p')
+          if [ -n "$NOTES" ]; then
+            EXISTING=$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json body -q '.body' 2>/dev/null || echo "")
+            if [ -n "$EXISTING" ]; then
+              COMBINED="${NOTES}"$'\n\n---\n\n'"${EXISTING}"
+              gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --notes "${COMBINED}"
+            fi
+          fi
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
