@@ -2,6 +2,9 @@
 
 Discrete fields on `ManifoldMeshes.jl` meshes.
 
+[![CI](https://github.com/VANvonZHANG/ManifoldFields.jl/actions/workflows/CI.yml/badge.svg)](https://github.com/VANvonZHANG/ManifoldFields.jl/actions/workflows/CI.yml)
+[![Documentation](https://github.com/VANvonZHANG/ManifoldFields.jl/actions/workflows/Documentation.yml/badge.svg)](https://github.com/VANvonZHANG/ManifoldFields.jl/actions/workflows/Documentation.yml)
+
 ```julia
 using DimensionalData
 using ManifoldFields
@@ -30,3 +33,9 @@ multi-variable `FieldSet` container is deferred.
 UGRID IO in v0 is focused on own-file NetCDF round trips. UGRID vocabulary is
 kept at the IO boundary; field-level location semantics use `ManifoldMeshes`
 location tags such as `NodeLoc`, `EdgeLoc`, and `CellLoc`.
+
+## Package Status
+
+This repository is currently treated as a private/development Julia package.
+General Registry registration is deferred until the `FieldSet` API and UGRID
+multi-field IO contracts are stable. See `ROADMAP.md` for the planned work.
