@@ -1,0 +1,10 @@
+[deps]
+DimensionalData = "0703355e-b756-11e9-17c0-8b28908087d0"
+Documenter = "e30172f5-a6a5-5a46-863b-614d45cd2de4"
+ManifoldFields = "9c5b4d8f-6d30-4f8a-9f1f-2c1e5c2f4b31"
+ManifoldMeshes = "d2a7aed9-80bb-46a9-9a56-e170a93cc177"
+
+[compat]
+DimensionalData = "0.29"
+Documenter = "1"
+ManifoldMeshes = "0.6"
