@@ -46,7 +46,7 @@ struct FieldSet{
     LD,
     M,
     LM,
-    MT <: AbstractManifoldMesh,
+    MT <: AbstractManifoldMesh
 } <: AbstractDimStack{K, T, N, L}
     data::L
     dims::D
@@ -62,7 +62,8 @@ struct FieldSet{
         for key in K
             ld = Tuple(layerdims[key])
             Loc = _loc_from_layerdims(ld)
-            locdim = only(d for d in ld if Symbol(DimensionalData.name(d)) in _LOCATION_DIM_NAMES)
+            locdim = only(d
+            for d in ld if Symbol(DimensionalData.name(d)) in _LOCATION_DIM_NAMES)
             # layerdims entries are basedims (no index values), so resolve the
             # location dim against the combined stack dims before taking length
             locdim = DimensionalData.dims(dims, locdim)
@@ -99,8 +100,9 @@ function FieldSet(
     return FieldSet(arrays, ds, (), lds, DimensionalData.NoMetadata(), md, mesh0)
 end
 
-FieldSet(mesh0::AbstractManifoldMesh, fields::Pair{Symbol, <:DiscreteField}...) =
+function FieldSet(mesh0::AbstractManifoldMesh, fields::Pair{Symbol, <:DiscreteField}...)
     FieldSet(mesh0, (; fields...))
+end
 
 function FieldSet(fields::Pair{Symbol, <:DiscreteField}...)
     nt = (; fields...)
@@ -108,8 +110,9 @@ function FieldSet(fields::Pair{Symbol, <:DiscreteField}...)
     return FieldSet(mesh(first(nt)), nt)
 end
 
-FieldSet(mesh0::AbstractManifoldMesh, fields::Dict{Symbol, <:DiscreteField}) =
+function FieldSet(mesh0::AbstractManifoldMesh, fields::Dict{Symbol, <:DiscreteField})
     FieldSet(mesh0, (; sort!(collect(fields); by = first)...))
+end
 
 mesh(fs::FieldSet) = getfield(fs, :mesh)
 

@@ -60,6 +60,18 @@ end
         (plain = (Dim{:time}(1:3),),),
         DimensionalData.NoMetadata(),
         (plain = DimensionalData.NoMetadata(),),
-        g,
+        g
+    )
+
+    # location dim length mismatch vs mesh (inner-constructor path)
+    n = num_nodes(g)
+    @test_throws DimensionMismatch ManifoldFields.FieldSet(
+        (u = zeros(n - 1, 3),),
+        (Dim{:node}(1:(n - 1)), Dim{:time}(1:3)),
+        (),
+        (u = (Dim{:node}(1:(n - 1)), Dim{:time}(1:3)),),
+        DimensionalData.NoMetadata(),
+        (u = DimensionalData.NoMetadata(),),
+        g
     )
 end
