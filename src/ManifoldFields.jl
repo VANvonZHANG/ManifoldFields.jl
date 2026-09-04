@@ -13,6 +13,7 @@ export UGridDataset, to_ugrid, from_ugrid, from_ugrid_mesh, save_ugrid, load_ugr
 
 include("locations.jl")
 include("field.jl")
+include("fieldset.jl")
 include("broadcast.jl")
 include("interpolate.jl")
 include("ugrid.jl")
