@@ -12,7 +12,7 @@ using Test
         (Dim{:node}(1:5), Dim{:cell}(1:4)))
 end
 
-using ManifoldFields: FieldSet, field_names
+using ManifoldFields: FieldSet, field_names, fields
 
 @testset "FieldSet construction" begin
     g = small_grid()
@@ -74,4 +74,32 @@ end
         (u = DimensionalData.NoMetadata(),),
         g
     )
+end
+
+@testset "FieldSet access" begin
+    g = small_grid()
+    fs = sample_fieldset(g)
+
+    u = fs[:u]
+    @test u isa DiscreteField{NodeLoc}
+    @test mesh(u) === g
+    @test data(u) == node_time_values(g)
+    @test DimensionalData.dims(u) == node_time_dims(g)
+    @test DimensionalData.name(u) == :u
+
+    v = fs.v
+    @test v isa DiscreteField{CellLoc}
+    @test mesh(v) === g
+
+    all = fields(fs)
+    @test all isa NamedTuple{(:u, :v)}
+    @test all[:v] isa DiscreteField{CellLoc}
+
+    @test_throws KeyError fs[:missing]
+
+    io = IOBuffer()
+    show(io, fs)
+    str = String(take!(io))
+    @test occursin("FieldSet", str)
+    @test occursin(":u", str)
 end

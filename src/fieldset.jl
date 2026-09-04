@@ -120,3 +120,30 @@ mesh(fs::FieldSet) = getfield(fs, :mesh)
 
 Return the field name tuple `(Symbol, ...)` of a `FieldSet`."""
 field_names(fs::FieldSet) = keys(fs)
+
+import DimensionalData: layerdims, layermetadata, refdims
+
+for f in (:getindex, :view, :dotview)
+    @eval function Base.$f(fs::FieldSet, key::Symbol)
+        # NamedTuple Symbol indexing throws ErrorException, not KeyError
+        key in keys(fs) || throw(KeyError(key))
+        ld = layerdims(fs, key)
+        return DiscreteField(
+            _loc_from_layerdims(Tuple(ld)), mesh(fs), DimensionalData.data(fs)[key], ld;
+            name = key,
+            metadata = layermetadata(fs, key),
+            refdims = refdims(fs)
+        )
+    end
+end
+
+"""    fields(fs::FieldSet) -> NamedTuple
+
+Materialize every member as a `DiscreteField`."""
+function fields(fs::FieldSet{K}) where {K}
+    return NamedTuple{K}(map(key -> fs[key], K))
+end
+
+function Base.show(io::IO, fs::FieldSet)
+    print(io, "FieldSet on ", typeof(mesh(fs)), " with fields ", field_names(fs))
+end
