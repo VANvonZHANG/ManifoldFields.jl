@@ -103,3 +103,18 @@ end
     @test occursin("FieldSet", str)
     @test occursin(":u", str)
 end
+
+@testset "FieldSet dimensional slicing" begin
+    g = small_grid()
+    u = DiscreteField(NodeLoc, g, node_time_values(g), node_time_dims(g); name = :u)
+    w = DiscreteField(NodeLoc, g, time_node_values(g), time_node_dims(g); name = :w)
+    fs = FieldSet(g, :u => u, :w => w)   # both layers have :time
+
+    sliced = fs[Dim{:time}(1:2)]
+    @test sliced isa FieldSet
+    @test mesh(sliced) === g
+    @test size(DimensionalData.data(sliced)[:u]) == (num_nodes(g), 2)
+
+    @test_throws ArgumentError fs[Dim{:node}(1:2)]
+    @test_throws ArgumentError fs[Dim{:cell}(1:2)]   # not present anywhere
+end

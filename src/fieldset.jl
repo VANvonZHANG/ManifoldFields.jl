@@ -147,3 +147,71 @@ end
 function Base.show(io::IO, fs::FieldSet)
     print(io, "FieldSet on ", typeof(mesh(fs)), " with fields ", field_names(fs))
 end
+
+import DimensionalData: rebuild, rebuild_from_arrays
+import DimensionalData: AbstractBasicDimArray
+
+function DimensionalData.rebuild(
+        s::FieldSet;
+        data = DimensionalData.data(s),
+        dims = DimensionalData.dims(s),
+        refdims = DimensionalData.refdims(s),
+        layerdims = DimensionalData.layerdims(s),
+        metadata = DimensionalData.metadata(s),
+        layermetadata = DimensionalData.layermetadata(s)
+)
+    # never use `s.mesh` here: AbstractDimStack getproperty redirects to getindex
+    return FieldSet(
+        data, dims, refdims, layerdims, metadata, layermetadata, getfield(s, :mesh))
+end
+function DimensionalData.rebuild(
+        s::FieldSet, data, dims = DimensionalData.dims(s),
+        refdims = DimensionalData.refdims(s),
+        layerdims = DimensionalData.layerdims(s),
+        metadata = DimensionalData.metadata(s),
+        layermetadata = DimensionalData.layermetadata(s)
+)
+    return FieldSet(
+        data, dims, refdims, layerdims, metadata, layermetadata, getfield(s, :mesh))
+end
+
+function DimensionalData.rebuild_from_arrays(
+        s::FieldSet, das::Tuple{Vararg{<:AbstractBasicDimArray}}; kw...)
+    return rebuild_from_arrays(s, NamedTuple{field_names(s)}(das); kw...)
+end
+function DimensionalData.rebuild_from_arrays(
+        s::FieldSet,
+        das::NamedTuple{<:Any, <:Tuple{Vararg{<:AbstractBasicDimArray}}};
+        data = map(parent, das),
+        refdims = DimensionalData.refdims(s),
+        metadata = DimensionalData.metadata(s),
+        dims = nothing,
+        layerdims = map(basedims, das),
+        layermetadata = map(DimensionalData.metadata, das)
+)
+    if isnothing(dims)
+        # layerdims are basedims (Colon lookups); the inner constructor resolves
+        # location-dim lengths against these stack-level combinedims
+        dims = combinedims(collect(Tuple(das)))
+    end
+    return FieldSet(
+        data, dims, refdims, layerdims, metadata, layermetadata, getfield(s, :mesh))
+end
+
+function Base.getindex(
+        fs::FieldSet, d::DimensionalData.Dimension, ds::DimensionalData.Dimension...; kw...)
+    sel = (d, ds...)
+    selnames = Set(Symbol(DimensionalData.name(s)) for s in sel)
+    isempty(intersect(selnames, Set(_LOCATION_DIM_NAMES))) || throw(ArgumentError(
+        "cannot slice a location dimension ($(join(_LOCATION_DIM_NAMES, "/"))); " *
+        "FieldSet layers keep their mesh-aligned location extent"))
+    layers = map(field_names(fs)) do key
+        f = fs[key]
+        flagnames = Set(Symbol(DimensionalData.name(x)) for x in DimensionalData.dims(f))
+        if isempty(intersect(selnames, flagnames))
+            return f   # layer untouched by this selection
+        end
+        return DimensionalData.getindex(f, d, ds...; kw...)
+    end
+    return FieldSet(mesh(fs), NamedTuple{field_names(fs)}(Tuple(layers)))
+end
