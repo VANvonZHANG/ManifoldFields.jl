@@ -198,6 +198,16 @@ function DimensionalData.rebuild_from_arrays(
         data, dims, refdims, layerdims, metadata, layermetadata, getfield(s, :mesh))
 end
 
+"""
+    getindex(fs::FieldSet, d::Dimension, ds::Dimension...)
+
+Slice every field of the `FieldSet` along the given dimension selector(s),
+returning a new `FieldSet` on the same mesh; fields that contain none of the
+selected dimensions are passed through unchanged (a warning is emitted when
+no field contains any of them). Slicing a location dimension (`node`, `edge`,
+or `cell`) throws an `ArgumentError` because fields keep their mesh-aligned
+location extent.
+"""
 function Base.getindex(
         fs::FieldSet, d::DimensionalData.Dimension, ds::DimensionalData.Dimension...; kw...)
     sel = (d, ds...)
@@ -205,6 +215,14 @@ function Base.getindex(
     isempty(intersect(selnames, Set(_LOCATION_DIM_NAMES))) || throw(ArgumentError(
         "cannot slice a location dimension ($(join(_LOCATION_DIM_NAMES, "/"))); " *
         "FieldSet layers keep their mesh-aligned location extent"))
+    all_layer_dims = union!(
+        Set{Symbol}(),
+        (Set(Symbol(DimensionalData.name(x)) for x in DimensionalData.dims(fs[key]))
+        for key in field_names(fs))...)
+    if isempty(intersect(selnames, all_layer_dims))
+        @warn "FieldSet getindex: dimension(s) $(sort(collect(selnames))) not found in any field; returning an unchanged copy"
+    end
+
     layers = map(field_names(fs)) do key
         f = fs[key]
         flagnames = Set(Symbol(DimensionalData.name(x)) for x in DimensionalData.dims(f))

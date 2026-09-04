@@ -117,4 +117,9 @@ end
 
     @test_throws ArgumentError fs[Dim{:node}(1:2)]
     @test_throws ArgumentError fs[Dim{:cell}(1:2)]   # not present anywhere
+
+    # nowhere-present, non-location dim: warn and return an unchanged copy
+    fs_typo = @test_warn "not found in any field" fs[Dim{:typo}(1:2)]
+    @test fs_typo isa FieldSet
+    @test fs_typo == fs
 end
