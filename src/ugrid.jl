@@ -13,7 +13,7 @@ import ManifoldMeshes:
                        num_edges,
                        num_nodes
 
-struct UGridVariable{T}
+mutable struct UGridVariable{T}
     data::T
     dims::Tuple{Vararg{String}}
     attrs::Dict{String, Any}
@@ -251,16 +251,23 @@ function _metadata_float(attrs, name::String)
     throw(ArgumentError("UGRID Mesh2 attribute $name must be numeric"))
 end
 
-function _validate_latlon_grid!(mesh, ds::UGridDataset)
+function _validate_topology!(m, ds::UGridDataset)
     node_lon = _require_var(ds, "Mesh2_node_lon")
     face_nodes = _require_var(ds, "Mesh2_face_nodes")
     n_node = length(node_lon.data)
     n_face = size(face_nodes.data, 1)
-    num_nodes(mesh) == n_node ||
-        throw(ArgumentError("reconstructed mesh node count $(num_nodes(mesh)) != UGRID node count $n_node"))
-    num_cells(mesh) == n_face ||
-        throw(ArgumentError("reconstructed mesh cell count $(num_cells(mesh)) != UGRID face count $n_face"))
-    return mesh
+    num_nodes(m) == n_node || throw(ArgumentError(
+        "mesh node count $(num_nodes(m)) != UGRID node count $n_node"))
+    num_cells(m) == n_face || throw(ArgumentError(
+        "mesh cell count $(num_cells(m)) != UGRID face count $n_face"))
+    start_index = Int(get(face_nodes.attrs, "start_index", 0))
+    for c in 1:num_cells(m)
+        expected = collect(Int, cell_nodes(m, c))
+        actual = Int.(collect(face_nodes.data[c, :])) .+ (1 - start_index)
+        actual == expected || throw(ArgumentError(
+            "UGRID face_node_connectivity row $c does not match mesh connectivity (start_index-normalized)"))
+    end
+    return m
 end
 
 function from_ugrid_mesh(ds::UGridDataset; grid_type = nothing)
@@ -284,7 +291,7 @@ function from_ugrid_mesh(ds::UGridDataset; grid_type = nothing)
         lon_edges = _metadata_vector(attrs, "manifoldfields_lon_edges")
         radius = _metadata_float(attrs, "manifoldfields_radius")
         mesh = LatLonGrid(lat_edges = lat_edges, lon_edges = lon_edges; R = radius)
-        return _validate_latlon_grid!(mesh, ds)
+        return _validate_topology!(mesh, ds)
     end
 
     throw(ArgumentError("cannot reconstruct mesh without supported ManifoldFields mesh metadata"))

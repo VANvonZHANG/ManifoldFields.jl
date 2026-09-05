@@ -295,3 +295,36 @@ end
     end
     @test ds.variables["v"].attrs["units"] == "m2"
 end
+
+@testset "UGRID topology validation" begin
+    g = small_grid()
+    f = DiscreteField(NodeLoc, g, node_values(g), node_dims(g); name = :node_temp)
+    ds = to_ugrid(f)
+
+    # own-file start_index=1 round-trips through validation
+    @test ManifoldFields._validate_topology!(g, ds) === g
+
+    # 0-based external variant also validates
+    ds0 = to_ugrid(f)
+    fn0 = ds0.variables["Mesh2_face_nodes"]
+    fn0.data .= fn0.data .- 1
+    fn0.attrs["start_index"] = 0
+    @test ManifoldFields._validate_topology!(g, ds0) === g
+
+    # missing start_index defaults to 0 (UGRID default)
+    ds_noattr = to_ugrid(f)
+    fn = ds_noattr.variables["Mesh2_face_nodes"]
+    fn.data .= fn.data .- 1
+    delete!(fn.attrs, "start_index")
+    @test ManifoldFields._validate_topology!(g, ds_noattr) === g
+
+    # perturbed connectivity fails
+    ds_bad = to_ugrid(f)
+    ds_bad.variables["Mesh2_face_nodes"].data[1, 1] += 1
+    @test_throws ArgumentError ManifoldFields._validate_topology!(g, ds_bad)
+
+    # wrong node count fails
+    ds_short = to_ugrid(f)
+    ds_short.variables["Mesh2_node_lon"].data = ds_short.variables["Mesh2_node_lon"].data[1:(end - 1)]
+    @test_throws ArgumentError ManifoldFields._validate_topology!(g, ds_short)
+end
