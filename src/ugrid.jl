@@ -88,20 +88,22 @@ function _add_own_file_mesh_metadata!(attrs, mesh::LatLonGrid)
     return attrs
 end
 
+function _add_field_variable!(ds::UGridDataset, f::DiscreteField)
+    Loc = location(f)
+    varname = String(Symbol(DimensionalData.name(f)))
+    ds.variables[varname] = UGridVariable(
+        data(f),
+        _ugrid_field_dims(f, Loc),
+        _data_var_attrs(f, Loc, _ugrid_coordinates(Loc))
+    )
+    return ds
+end
+
 function to_ugrid(f::DiscreteField)
     ds = to_ugrid(mesh(f))
     Loc = location(f)
-    coordinates = _ugrid_coordinates(Loc)
     _add_location_coordinates!(ds, mesh(f), Loc)
-
-    varname = String(Symbol(DimensionalData.name(f)))
-    var_dims = _ugrid_field_dims(f, Loc)
-    ds.variables[varname] = UGridVariable(
-        data(f),
-        var_dims,
-        _data_var_attrs(f, Loc, coordinates)
-    )
-    return ds
+    return _add_field_variable!(ds, f)
 end
 
 function _metadata_attrs(metadata)
