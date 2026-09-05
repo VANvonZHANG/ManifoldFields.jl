@@ -15,6 +15,7 @@ include("locations.jl")
 include("field.jl")
 include("fieldset.jl")
 include("broadcast.jl")
+include("fieldset_broadcast.jl")
 include("interpolate.jl")
 include("ugrid.jl")
 

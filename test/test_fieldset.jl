@@ -148,3 +148,52 @@ end
     @test r4 isa FieldSet
     @test mesh(r4) === g
 end
+
+@testset "FieldSet broadcast" begin
+    g = small_grid()
+    fs = sample_fieldset(g)
+
+    fs2 = 2 .* fs
+    @test fs2 isa FieldSet
+    @test mesh(fs2) === g
+    @test data(fs2[:u]) == 2 .* node_time_values(g)
+    @test data(fs2[:v]) == 2 .* cell_values(g)
+
+    fs3 = sin.(fs)
+    @test fs3 isa FieldSet
+    @test data(fs3[:v]) == sin.(cell_values(g))
+
+    fs4 = fs .+ fs
+    @test fs4 isa FieldSet
+    @test data(fs4[:u]) == 2 .* node_time_values(g)
+
+    # mixed locations coexist through broadcast
+    @test location(fs4[:u]) === NodeLoc
+    @test location(fs4[:v]) === CellLoc
+
+    # same-name-different-location pairing fails (u is NodeLoc here, NodeLoc ok;
+    # construct a CellLoc field named :u to force the mismatch)
+    u_cell = DiscreteField(CellLoc, g, cell_values(g), cell_dims(g); name = :u)
+    v_cell = DiscreteField(CellLoc, g, cell_values(g), cell_dims(g); name = :v)
+    fs_cell = FieldSet(g, :u => u_cell, :v => v_cell)
+    @test_throws DimensionMismatch fs .+ fs_cell
+
+    # name-set mismatch
+    other = FieldSet(g, :u => DiscreteField(
+        NodeLoc, g, node_time_values(g), node_time_dims(g); name = :u))
+    @test_throws DimensionMismatch fs .+ other
+
+    # mesh mismatch
+    g2 = small_grid()
+    fs_g2 = FieldSet(g2,
+        :u => DiscreteField(
+            NodeLoc, g2, node_time_values(g2), node_time_dims(g2); name = :u),
+        :v => DiscreteField(CellLoc, g2, cell_values(g2), cell_dims(g2); name = :v))
+    @test_throws DimensionMismatch fs .+ fs_g2
+
+    # dim-order mismatch within same field name (consistent with DiscreteField)
+    u_tn = DiscreteField(NodeLoc, g, time_node_values(g), time_node_dims(g); name = :u)
+    fs_tn = FieldSet(g, :u => u_tn, :v => DiscreteField(
+        CellLoc, g, cell_values(g), cell_dims(g); name = :v))
+    @test_throws DimensionMismatch fs .+ fs_tn
+end
