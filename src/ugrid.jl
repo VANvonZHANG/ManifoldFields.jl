@@ -408,3 +408,19 @@ end
 function load_ugrid_mesh(path::AbstractString; grid_type = nothing)
     from_ugrid_mesh(_read_ugrid_dataset(path); grid_type = grid_type)
 end
+
+function to_ugrid(fs::FieldSet)
+    ds = to_ugrid(mesh(fs))
+    fs_fields = fields(fs)
+    locs = unique(location(f) for f in Tuple(fs_fields))
+    for Loc in locs
+        _add_location_coordinates!(ds, mesh(fs), Loc)
+    end
+    for f in Tuple(fs_fields)
+        _add_field_variable!(ds, f)
+    end
+    for (k, v) in _metadata_attrs(DimensionalData.metadata(fs))
+        ds.attributes[String(k)] = v
+    end
+    return ds
+end

@@ -272,3 +272,26 @@ end
     )
     @test_throws DimensionMismatch from_ugrid(mismatched_rank_ds)
 end
+
+@testset "UGRID FieldSet writer" begin
+    g = small_grid()
+    fs = FieldSet(
+        :u => DiscreteField(NodeLoc, g, node_values(g), node_dims(g); name = :u),
+        :v => DiscreteField(CellLoc, g, cell_values(g), cell_dims(g);
+            name = :v, metadata = Dict("units" => "m2")),
+        :w => DiscreteField(EdgeLoc, g, edge_values(g), edge_dims(g); name = :w)
+    )
+
+    ds = to_ugrid(fs)
+    @test haskey(ds.variables, "Mesh2")
+    @test ds.variables["Mesh2"].attrs["face_coordinates"] == "Mesh2_face_lon Mesh2_face_lat"
+    @test ds.variables["Mesh2"].attrs["edge_node_connectivity"] == "Mesh2_edge_nodes"
+
+    for (key, locstr) in ((:u, "node"), (:v, "face"), (:w, "edge"))
+        @test haskey(ds.variables, String(key))
+        var = ds.variables[String(key)]
+        @test var.attrs["mesh"] == "Mesh2"
+        @test var.attrs["location"] == locstr
+    end
+    @test ds.variables["v"].attrs["units"] == "m2"
+end
