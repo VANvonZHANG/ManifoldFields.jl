@@ -114,6 +114,7 @@ end
     @test sliced isa FieldSet
     @test mesh(sliced) === g
     @test size(DimensionalData.data(sliced)[:u]) == (num_nodes(g), 2)
+    @test size(DimensionalData.data(sliced)[:w]) == (2, num_nodes(g))
 
     @test_throws ArgumentError fs[Dim{:node}(1:2)]
     @test_throws ArgumentError fs[Dim{:cell}(1:2)]   # not present anywhere
@@ -122,4 +123,28 @@ end
     fs_typo = @test_warn "not found in any field" fs[Dim{:typo}(1:2)]
     @test fs_typo isa FieldSet
     @test fs_typo == fs
+end
+
+@testset "FieldSet rebuild overrides" begin
+    g = small_grid()
+    fs = sample_fieldset(g)
+
+    r1 = DimensionalData.rebuild(fs)
+    @test r1 isa FieldSet
+    @test mesh(r1) === g
+    @test data(r1[:v]) == data(fs[:v])
+
+    r2 = DimensionalData.rebuild(fs, DimensionalData.data(fs))
+    @test r2 isa FieldSet
+    @test mesh(r2) === g
+
+    das = fields(fs)
+    r3 = DimensionalData.rebuild_from_arrays(fs, das)
+    @test r3 isa FieldSet
+    @test mesh(r3) === g
+    @test field_names(r3) == (:u, :v)
+
+    r4 = DimensionalData.rebuild_from_arrays(fs, Tuple(das))
+    @test r4 isa FieldSet
+    @test mesh(r4) === g
 end
