@@ -270,7 +270,7 @@ function _validate_topology!(m, ds::UGridDataset)
     return m
 end
 
-function from_ugrid_mesh(ds::UGridDataset; grid_type = nothing)
+function from_ugrid_mesh(ds::UGridDataset; grid_type = nothing, mesh = nothing)
     meshvar = _require_var(ds, "Mesh2")
     _require_attr(meshvar, "cf_role") == "mesh_topology" ||
         throw(ArgumentError("Mesh2 is missing cf_role=mesh_topology"))
@@ -282,6 +282,10 @@ function from_ugrid_mesh(ds::UGridDataset; grid_type = nothing)
     _require_var(ds, "Mesh2_node_lon")
     _require_var(ds, "Mesh2_node_lat")
     _require_var(ds, "Mesh2_face_nodes")
+
+    if mesh !== nothing
+        return _validate_topology!(mesh, ds)
+    end
 
     attrs = meshvar.attrs
     metadata_grid_type = _require_attr(meshvar, "manifoldfields_grid_type")
@@ -415,8 +419,8 @@ function load_ugrid(path::AbstractString; grid_type = nothing, mesh = nothing)
     return from_ugrid(_read_ugrid_dataset(path); grid_type = grid_type, mesh = mesh)
 end
 
-function load_ugrid_mesh(path::AbstractString; grid_type = nothing)
-    from_ugrid_mesh(_read_ugrid_dataset(path); grid_type = grid_type)
+function load_ugrid_mesh(path::AbstractString; grid_type = nothing, mesh = nothing)
+    from_ugrid_mesh(_read_ugrid_dataset(path); grid_type = grid_type, mesh = mesh)
 end
 
 function to_ugrid(fs::FieldSet)

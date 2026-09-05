@@ -354,3 +354,33 @@ end
     empty_data_ds = to_ugrid(g)
     @test_throws ArgumentError from_ugrid(empty_data_ds)
 end
+
+@testset "UGRID external file via injected mesh" begin
+    g = small_grid()
+    f = DiscreteField(NodeLoc, g, node_values(g), node_dims(g); name = :node_temp)
+
+    ext = to_ugrid(f)
+    ma = ext.variables["Mesh2"].attrs
+    for k in ("manifoldfields_grid_type", "manifoldfields_lat_edges",
+              "manifoldfields_lon_edges", "manifoldfields_radius")
+        delete!(ma, k)
+    end
+    fn = ext.variables["Mesh2_face_nodes"]
+    fn.data .= fn.data .- 1
+    fn.attrs["start_index"] = 0
+
+    # no mesh source -> error
+    @test_throws ArgumentError from_ugrid_mesh(ext)
+    @test_throws ArgumentError from_ugrid(ext)
+
+    # injected mesh validates (0-based external connectivity)
+    m = from_ugrid_mesh(ext; mesh = g)
+    @test m === g
+    fs = from_ugrid(ext; mesh = g)
+    @test fs isa FieldSet
+    @test data(fs[:node_temp]) == node_values(g)
+
+    # mismatched mesh fails validation
+    g_perturbed = small_grid(; nlat = 3)
+    @test_throws ArgumentError from_ugrid_mesh(ext; mesh = g_perturbed)
+end
