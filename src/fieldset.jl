@@ -94,7 +94,11 @@ function FieldSet(
             "field :$key mesh does not match the FieldSet mesh (=== required); use withmesh to rebind"))
     end
     arrays = map(parent, fields)
-    ds = combinedims(collect(Tuple(fields)))
+    # format wraps raw-range lookups (e.g. `Dim{:time}(1:3)`) into proper
+    # `Sampled` lookups, as DimArray construction does; without this, inherited
+    # reductions (`sum(fs; dims=...)`) fail in `reducelookup` on layer dims.
+    # Formatted dims stay `==` to the raw input dims.
+    ds = DimensionalData.format(combinedims(collect(Tuple(fields))))
     lds = map(basedims, fields)
     md = map(DimensionalData.metadata, fields)
     return FieldSet(arrays, ds, (), lds, DimensionalData.NoMetadata(), md, mesh0)
@@ -232,4 +236,71 @@ function Base.getindex(
         return DimensionalData.getindex(f, d, ds...; kw...)
     end
     return FieldSet(mesh(fs), NamedTuple{field_names(fs)}(Tuple(layers)))
+end
+
+function Base.merge(s::FieldSet, pairs::Pair{Symbol, <:DiscreteField}...)
+    for (key, f) in pairs
+        mesh(f) === mesh(s) || throw(DimensionMismatch(
+            "field :$key mesh does not match the FieldSet mesh (=== required); use withmesh to rebind"))
+    end
+    merged = merge(fields(s), (; pairs...))
+    return FieldSet(mesh(s), merged)
+end
+function Base.merge(s::FieldSet, nt::NamedTuple{<:Any, <:Tuple{Vararg{<:DiscreteField}}})
+    for key in keys(nt)
+        mesh(nt[key]) === mesh(s) || throw(DimensionMismatch(
+            "field :$key mesh does not match the FieldSet mesh (=== required); use withmesh to rebind"))
+    end
+    return FieldSet(mesh(s), merge(fields(s), nt))
+end
+Base.merge(s::FieldSet) = s
+
+function Base.:(==)(s1::FieldSet, s2::FieldSet)
+    mesh(s1) === mesh(s2) || return false
+    field_names(s1) == field_names(s2) || return false
+    return DimensionalData.data(s1) == DimensionalData.data(s2) &&
+           DimensionalData.layerdims(s1) == DimensionalData.layerdims(s2)
+end
+
+# Reductions. DimensionalData's inherited stack reductions keep each
+# fully-reduced dimension as a length-1 dimension in every affected layer; for
+# FieldSet those dimensions are dropped instead, so `sum(fs; dims = Dim{:time})`
+# yields fields whose dims no longer contain the reduced dimension. Reducing
+# along a location dimension throws: the per-layer rebuild goes through
+# DiscreteField validation, which rejects a mesh location extent of length 1
+# (layers that have the location dim) or a layer left with no location
+# dimension at all.
+import Statistics
+
+for (mod,
+    fnames) in (:Base => (:sum, :prod, :maximum, :minimum, :extrema),
+    :Statistics => (:mean, :median, :std, :var))
+    for fname in fnames
+        @eval function $(mod).$(fname)(s::FieldSet; dims = :, kw...)
+            return DimensionalData.maplayers(s) do A
+                if dims isa Colon
+                    return $(mod).$(fname)(A; dims = :, kw...)
+                end
+                ld = DimensionalData.commondims(A, dims)
+                isempty(ld) && return A   # layer untouched by this reduction
+                return Base.dropdims($(mod).$(fname)(A; dims = ld, kw...); dims = ld)
+            end
+        end
+    end
+end
+for (mod,
+    fnames) in (:Base => (:reduce, :sum, :prod, :maximum, :minimum, :extrema),
+    :Statistics => (:mean,))
+    for fname in fnames
+        @eval function $(mod).$(fname)(f::Function, s::FieldSet; dims = Colon())
+            return DimensionalData.maplayers(s) do A
+                if dims isa Colon
+                    return $(mod).$(fname)(f, A; dims = :)
+                end
+                ld = DimensionalData.commondims(A, dims)
+                isempty(ld) && return A   # layer untouched by this reduction
+                return Base.dropdims($(mod).$(fname)(f, A; dims = ld); dims = ld)
+            end
+        end
+    end
 end

@@ -197,3 +197,54 @@ end
         CellLoc, g, cell_values(g), cell_dims(g); name = :v))
     @test_throws DimensionMismatch fs .+ fs_tn
 end
+
+@testset "FieldSet merge and equality" begin
+    g = small_grid()
+    fs = sample_fieldset(g)
+    w = DiscreteField(EdgeLoc, g, edge_values(g), edge_dims(g); name = :w)
+
+    fs3 = merge(fs, :w => w)
+    @test field_names(fs3) == (:u, :v, :w)
+    @test fs3[:w] isa DiscreteField{EdgeLoc}
+    @test mesh(fs3) === g
+
+    fs2 = merge(fs, (w = w,))
+    @test field_names(fs2) == (:u, :v, :w)
+
+    other = small_grid(; nlat = 3)
+    w_wrong = DiscreteField(
+        EdgeLoc, other, collect(Float64, 1:num_edges(other)), edge_dims(other); name = :w)
+    @test_throws DimensionMismatch merge(fs, :w => w_wrong)
+    @test_throws DimensionMismatch merge(fs, (w = w_wrong,))
+
+    fs_copy = merge(fs)
+    @test field_names(fs_copy) == (:u, :v)
+
+    @test fs == sample_fieldset(g)
+    @test fs != 2 .* fs
+    @test fs != FieldSet(g, :x => DiscreteField(
+        NodeLoc, g, node_time_values(g), node_time_dims(g); name = :x))
+    g3 = small_grid(; nlat = 3)
+    fs_g3 = FieldSet(g3,
+        :u => DiscreteField(
+            NodeLoc, g3, node_time_values(g3), node_time_dims(g3); name = :u),
+        :v => DiscreteField(CellLoc, g3, cell_values(g3), cell_dims(g3); name = :v))
+    @test fs != fs_g3
+end
+
+@testset "FieldSet reductions" begin
+    g = small_grid()
+    fs = sample_fieldset(g)   # :u has dims (node, time); :v has dims (cell,)
+
+    s = sum(fs; dims = Dim{:time})
+    @test s isa FieldSet
+    @test mesh(s) === g
+    @test data(s[:u]) == dropdims(
+        sum(node_time_values(g); dims = 2); dims = 2)
+
+    total = sum(fs)
+    @test total isa NamedTuple
+    @test total[:v] == sum(cell_values(g))
+
+    @test_throws Exception sum(fs; dims = Dim{:node})
+end
