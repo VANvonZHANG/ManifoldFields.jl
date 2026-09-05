@@ -6,6 +6,7 @@ using StaticArrays
 using YAXArrays
 
 export DiscreteField, mesh, data, location, withmesh
+export FieldSet, fields, field_names
 export location_dimname, expected_location_length
 export interpolate
 export UGridDataset, to_ugrid, from_ugrid, from_ugrid_mesh, save_ugrid, load_ugrid,

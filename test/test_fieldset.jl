@@ -12,8 +12,6 @@ using Test
         (Dim{:node}(1:5), Dim{:cell}(1:4)))
 end
 
-using ManifoldFields: FieldSet, field_names, fields
-
 @testset "FieldSet construction" begin
     g = small_grid()
     u = DiscreteField(NodeLoc, g, node_time_values(g), node_time_dims(g); name = :u)
