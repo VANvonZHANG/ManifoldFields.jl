@@ -124,12 +124,13 @@ end
     @test mesh_attrs["manifoldfields_radius"] == g.R
 
     loaded = from_ugrid(ds)
-    @test loaded isa DiscreteField{CellLoc}
-    @test location(loaded) === CellLoc
-    @test data(loaded) == data(f)
-    @test DimensionalData.dims(loaded) == DimensionalData.dims(f)
-    @test DimensionalData.metadata(loaded)["units"] == "m2"
-    @test DimensionalData.metadata(loaded)["mesh"] == "Mesh2"
+    @test loaded isa FieldSet
+    @test loaded[:cell_area] isa DiscreteField{CellLoc}
+    @test location(loaded[:cell_area]) === CellLoc
+    @test data(loaded[:cell_area]) == data(f)
+    @test DimensionalData.dims(loaded[:cell_area]) == DimensionalData.dims(f)
+    @test DimensionalData.metadata(loaded[:cell_area])["units"] == "m2"
+    @test DimensionalData.metadata(loaded[:cell_area])["mesh"] == "Mesh2"
     @test num_cells(mesh(loaded)) == num_cells(g)
     @test num_nodes(mesh(loaded)) == num_nodes(g)
 
@@ -140,10 +141,12 @@ end
     nf = DiscreteField(NodeLoc, g, node_time_values(g), node_time_dims(g);
         name = :node_temp_by_time)
     loaded_node = from_ugrid(to_ugrid(nf))
-    @test loaded_node isa DiscreteField{NodeLoc}
-    @test location(loaded_node) === NodeLoc
-    @test data(loaded_node) == data(nf)
-    @test DimensionalData.dims(loaded_node) == DimensionalData.dims(nf)
+    @test loaded_node isa FieldSet
+    @test loaded_node[:node_temp_by_time] isa DiscreteField{NodeLoc}
+    @test location(loaded_node[:node_temp_by_time]) === NodeLoc
+    @test data(loaded_node[:node_temp_by_time]) == data(nf)
+    @test DimensionalData.dims(loaded_node[:node_temp_by_time]) ==
+          DimensionalData.dims(nf)
 end
 
 @testset "UGRID NetCDF save/load round-trip" begin
@@ -154,12 +157,13 @@ end
 
     save_ugrid(f, path)
     loaded = load_ugrid(path)
-    @test loaded isa DiscreteField{CellLoc}
-    @test location(loaded) === CellLoc
-    @test data(loaded) == data(f)
-    @test DimensionalData.dims(loaded) == DimensionalData.dims(f)
-    @test DimensionalData.metadata(loaded)["units"] == "m2"
-    @test DimensionalData.metadata(loaded)["mesh"] == "Mesh2"
+    @test loaded isa FieldSet
+    @test loaded[:cell_area] isa DiscreteField{CellLoc}
+    @test location(loaded[:cell_area]) === CellLoc
+    @test data(loaded[:cell_area]) == data(f)
+    @test DimensionalData.dims(loaded[:cell_area]) == DimensionalData.dims(f)
+    @test DimensionalData.metadata(loaded[:cell_area])["units"] == "m2"
+    @test DimensionalData.metadata(loaded[:cell_area])["mesh"] == "Mesh2"
 
     loaded_mesh = load_ugrid_mesh(path)
     @test num_cells(loaded_mesh) == num_cells(g)
@@ -170,8 +174,8 @@ end
     int_path = tempname() * ".nc"
     save_ugrid(int_field, int_path)
     loaded_int = load_ugrid(int_path)
-    @test data(loaded_int) == data(int_field)
-    @test eltype(data(loaded_int)) == Int64
+    @test data(loaded_int[:node_count]) == data(int_field)
+    @test eltype(data(loaded_int[:node_count])) == Int64
 
     float32_values = Float32.(node_values(g))
     float32_field = DiscreteField(NodeLoc, g, float32_values, node_dims(g);
@@ -179,8 +183,8 @@ end
     float32_path = tempname() * ".nc"
     save_ugrid(float32_field, float32_path)
     loaded_float32 = load_ugrid(float32_path)
-    @test data(loaded_float32) == data(float32_field)
-    @test eltype(data(loaded_float32)) == Float32
+    @test data(loaded_float32[:node_temp_float32]) == data(float32_field)
+    @test eltype(data(loaded_float32[:node_temp_float32])) == Float32
 
     unnamed_dimarray = DimArray(node_values(g), node_dims(g))
     unnamed_field = DiscreteField(NodeLoc, g, unnamed_dimarray)
@@ -190,9 +194,9 @@ end
     unnamed_ds = to_ugrid(unnamed_field)
     @test haskey(unnamed_ds.variables, "field")
     loaded_unnamed = load_ugrid(unnamed_path)
-    @test loaded_unnamed isa DiscreteField{NodeLoc}
-    @test DimensionalData.name(loaded_unnamed) == :field
-    @test data(loaded_unnamed) == node_values(g)
+    @test loaded_unnamed isa FieldSet
+    @test DimensionalData.name(loaded_unnamed[:field]) == :field
+    @test data(loaded_unnamed[:field]) == node_values(g)
 
     @test_throws ArgumentError save_ugrid(f, tempname() * ".nc"; format = :unknown)
 end
@@ -231,7 +235,9 @@ end
             "coordinates" => "Mesh2_node_lon Mesh2_node_lat"
         )
     )
-    @test_throws ArgumentError from_ugrid(multi_data_ds)
+    loaded_multi = from_ugrid(multi_data_ds)
+    @test loaded_multi isa FieldSet
+    @test Set(field_names(loaded_multi)) == Set([:node_temp, :other_node_temp])
 
     missing_location_ds = to_ugrid(f)
     delete!(missing_location_ds.variables["node_temp"].attrs, "location")
@@ -327,4 +333,24 @@ end
     ds_short = to_ugrid(f)
     ds_short.variables["Mesh2_node_lon"].data = ds_short.variables["Mesh2_node_lon"].data[1:(end - 1)]
     @test_throws ArgumentError ManifoldFields._validate_topology!(g, ds_short)
+end
+
+@testset "UGRID multi-field round-trip" begin
+    g = small_grid()
+    fs = sample_fieldset(g)
+    ds = to_ugrid(fs)
+
+    loaded = from_ugrid(ds)
+    @test loaded isa FieldSet
+    @test mesh(loaded) === mesh(loaded[:u])
+    @test field_names(loaded) == (:u, :v)
+    @test loaded[:u] isa DiscreteField{NodeLoc}
+    @test loaded[:v] isa DiscreteField{CellLoc}
+    @test data(loaded[:u]) == node_time_values(g)
+    @test data(loaded[:v]) == cell_values(g)
+    @test DimensionalData.dims(loaded[:u]) == node_time_dims(g)
+    @test num_nodes(mesh(loaded)) == num_nodes(g)
+
+    empty_data_ds = to_ugrid(g)
+    @test_throws ArgumentError from_ugrid(empty_data_ds)
 end

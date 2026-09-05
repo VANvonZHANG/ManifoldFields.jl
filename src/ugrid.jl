@@ -297,18 +297,21 @@ function from_ugrid_mesh(ds::UGridDataset; grid_type = nothing)
     throw(ArgumentError("cannot reconstruct mesh without supported ManifoldFields mesh metadata"))
 end
 
-function from_ugrid(ds::UGridDataset; grid_type = nothing)
-    data_vars = _find_data_vars(ds)
-    length(data_vars) == 1 ||
-        throw(ArgumentError("expected exactly one UGRID data variable with mesh attribute, found $(length(data_vars))"))
-    varname = only(data_vars)
-    var = ds.variables[varname]
-    _require_attr(var, "mesh") == "Mesh2" ||
-        throw(ArgumentError("UGRID data variable $varname references unsupported mesh"))
-    Loc = _loc_from_ugrid(_require_attr(var, "location"))
-    mesh = from_ugrid_mesh(ds; grid_type = grid_type)
-    return DiscreteField(Loc, mesh, var.data, _dims_from_ugrid(var, Loc);
-        name = Symbol(varname), metadata = var.attrs)
+function from_ugrid(ds::UGridDataset; grid_type = nothing, mesh = nothing)
+    data_vars = sort!(_find_data_vars(ds))
+    isempty(data_vars) && throw(ArgumentError(
+        "UGRID dataset has no data variables (variables with a mesh attribute)"))
+    m = mesh === nothing ? from_ugrid_mesh(ds; grid_type = grid_type) :
+        _validate_topology!(mesh, ds)
+    fields_nt = NamedTuple{Tuple(Symbol.(data_vars))}(map(data_vars) do varname
+        var = ds.variables[varname]
+        _require_attr(var, "mesh") == "Mesh2" || throw(ArgumentError(
+            "UGRID data variable $varname references unsupported mesh"))
+        Loc = _loc_from_ugrid(_require_attr(var, "location"))
+        return DiscreteField(Loc, m, var.data, _dims_from_ugrid(var, Loc);
+            name = Symbol(varname), metadata = var.attrs)
+    end)
+    return FieldSet(m, fields_nt)
 end
 
 function _define_dimensions!(nc, ds::UGridDataset)
@@ -408,8 +411,8 @@ function _read_ugrid_dataset(path::AbstractString)
     return UGridDataset(vars, attrs)
 end
 
-function load_ugrid(path::AbstractString; grid_type = nothing)
-    from_ugrid(_read_ugrid_dataset(path); grid_type = grid_type)
+function load_ugrid(path::AbstractString; grid_type = nothing, mesh = nothing)
+    return from_ugrid(_read_ugrid_dataset(path); grid_type = grid_type, mesh = mesh)
 end
 
 function load_ugrid_mesh(path::AbstractString; grid_type = nothing)
