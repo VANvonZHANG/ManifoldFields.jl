@@ -362,7 +362,7 @@ end
     ext = to_ugrid(f)
     ma = ext.variables["Mesh2"].attrs
     for k in ("manifoldfields_grid_type", "manifoldfields_lat_edges",
-              "manifoldfields_lon_edges", "manifoldfields_radius")
+        "manifoldfields_lon_edges", "manifoldfields_radius")
         delete!(ma, k)
     end
     fn = ext.variables["Mesh2_face_nodes"]
@@ -383,4 +383,29 @@ end
     # mismatched mesh fails validation
     g_perturbed = small_grid(; nlat = 3)
     @test_throws ArgumentError from_ugrid_mesh(ext; mesh = g_perturbed)
+end
+
+@testset "UGRID NetCDF multi-field round-trip" begin
+    g = small_grid()
+    fs = sample_fieldset(g)
+    path = tempname() * ".nc"
+
+    save_ugrid(fs, path)
+    loaded = load_ugrid(path)
+    @test loaded isa FieldSet
+    @test mesh(loaded) === mesh(loaded[:u])
+    @test data(loaded[:u]) == node_time_values(g)
+    @test data(loaded[:v]) == cell_values(g)
+    @test DimensionalData.dims(loaded[:u]) == node_time_dims(g)
+
+    # dimension-order variant: (time, node) instead of (node, time)
+    fs_tn = FieldSet(
+        :u => DiscreteField(NodeLoc, g, time_node_values(g), time_node_dims(g); name = :u),
+        :v => DiscreteField(CellLoc, g, cell_values(g), cell_dims(g); name = :v)
+    )
+    tn_path = tempname() * ".nc"
+    save_ugrid(fs_tn, tn_path)
+    loaded_tn = load_ugrid(tn_path)
+    @test DimensionalData.dims(loaded_tn[:u]) == time_node_dims(g)
+    @test data(loaded_tn[:u]) == time_node_values(g)
 end
