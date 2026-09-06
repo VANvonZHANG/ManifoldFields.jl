@@ -60,13 +60,15 @@ Design constraints:
   `DiscreteField` with multi-variable semantics.
 - Keep `DiscreteField` as the single-variable building block.
 
+- Status: implemented 2026-09 (see CHANGELOG).
+
 ## UGRID IO
 
 The current IO scope is own-file round trips. The next reader/writer pass should
 handle more external UGRID files while staying aligned with concrete mesh types
 available in `ManifoldMeshes.jl`.
 
-Planned coverage:
+Delivered for own-file round trips and external files with injected meshes:
 
 - Multiple data variables in one file.
 - Different dimension orders.
@@ -75,6 +77,9 @@ Planned coverage:
 
 Do not broaden to arbitrary unstructured mesh support until `ManifoldMeshes.jl`
 has a corresponding concrete mesh representation.
+
+- Status: multi-variable read/write, dimension orders, topology validation, and
+  CF/UGRID attributes delivered 2026-09.
 
 ## Interpolation
 

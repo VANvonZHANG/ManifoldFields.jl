@@ -16,6 +16,22 @@ releases.
 - Add Documenter.jl documentation skeleton.
 - Add project roadmap for FieldSet, UGRID IO, interpolation, remapping, and
   lazy/out-of-core work.
+- Add `FieldSet`: multi-field container of `DiscreteField`s sharing one mesh,
+  subtyping `AbstractDimStack`; mixed `NodeLoc`/`EdgeLoc`/`CellLoc` members;
+  `fs[:key]` materializes a `DiscreteField`; per-field dot-broadcast via
+  `FieldSetStyle`; `merge` with mesh validation; dimensional slicing and
+  reductions.
+- Add UGRID multi-field IO: `to_ugrid(::FieldSet)`, `from_ugrid` returns a
+  `FieldSet` for any number of data variables, `save_ugrid`/`load_ugrid`
+  multi-field round-trips, full topology validation with `start_index`
+  normalization, and external-file reading via `load_ugrid(path; mesh = ...)`.
+- Add `fields(fs)` and `field_names(fs)` accessors.
+- Reductions on `FieldSet` drop fully-reduced dimensions (unlike DimensionalData's length-1 retention).
+
+### Changed
+
+- `from_ugrid`/`load_ugrid` now return a `FieldSet` (previously a single
+  `DiscreteField`; multi-variable datasets were rejected).
 
 ## [0.1.0] - 2026-07-23
 

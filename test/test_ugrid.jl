@@ -124,12 +124,13 @@ end
     @test mesh_attrs["manifoldfields_radius"] == g.R
 
     loaded = from_ugrid(ds)
-    @test loaded isa DiscreteField{CellLoc}
-    @test location(loaded) === CellLoc
-    @test data(loaded) == data(f)
-    @test DimensionalData.dims(loaded) == DimensionalData.dims(f)
-    @test DimensionalData.metadata(loaded)["units"] == "m2"
-    @test DimensionalData.metadata(loaded)["mesh"] == "Mesh2"
+    @test loaded isa FieldSet
+    @test loaded[:cell_area] isa DiscreteField{CellLoc}
+    @test location(loaded[:cell_area]) === CellLoc
+    @test data(loaded[:cell_area]) == data(f)
+    @test DimensionalData.dims(loaded[:cell_area]) == DimensionalData.dims(f)
+    @test DimensionalData.metadata(loaded[:cell_area])["units"] == "m2"
+    @test DimensionalData.metadata(loaded[:cell_area])["mesh"] == "Mesh2"
     @test num_cells(mesh(loaded)) == num_cells(g)
     @test num_nodes(mesh(loaded)) == num_nodes(g)
 
@@ -140,10 +141,12 @@ end
     nf = DiscreteField(NodeLoc, g, node_time_values(g), node_time_dims(g);
         name = :node_temp_by_time)
     loaded_node = from_ugrid(to_ugrid(nf))
-    @test loaded_node isa DiscreteField{NodeLoc}
-    @test location(loaded_node) === NodeLoc
-    @test data(loaded_node) == data(nf)
-    @test DimensionalData.dims(loaded_node) == DimensionalData.dims(nf)
+    @test loaded_node isa FieldSet
+    @test loaded_node[:node_temp_by_time] isa DiscreteField{NodeLoc}
+    @test location(loaded_node[:node_temp_by_time]) === NodeLoc
+    @test data(loaded_node[:node_temp_by_time]) == data(nf)
+    @test DimensionalData.dims(loaded_node[:node_temp_by_time]) ==
+          DimensionalData.dims(nf)
 end
 
 @testset "UGRID NetCDF save/load round-trip" begin
@@ -154,12 +157,13 @@ end
 
     save_ugrid(f, path)
     loaded = load_ugrid(path)
-    @test loaded isa DiscreteField{CellLoc}
-    @test location(loaded) === CellLoc
-    @test data(loaded) == data(f)
-    @test DimensionalData.dims(loaded) == DimensionalData.dims(f)
-    @test DimensionalData.metadata(loaded)["units"] == "m2"
-    @test DimensionalData.metadata(loaded)["mesh"] == "Mesh2"
+    @test loaded isa FieldSet
+    @test loaded[:cell_area] isa DiscreteField{CellLoc}
+    @test location(loaded[:cell_area]) === CellLoc
+    @test data(loaded[:cell_area]) == data(f)
+    @test DimensionalData.dims(loaded[:cell_area]) == DimensionalData.dims(f)
+    @test DimensionalData.metadata(loaded[:cell_area])["units"] == "m2"
+    @test DimensionalData.metadata(loaded[:cell_area])["mesh"] == "Mesh2"
 
     loaded_mesh = load_ugrid_mesh(path)
     @test num_cells(loaded_mesh) == num_cells(g)
@@ -170,8 +174,8 @@ end
     int_path = tempname() * ".nc"
     save_ugrid(int_field, int_path)
     loaded_int = load_ugrid(int_path)
-    @test data(loaded_int) == data(int_field)
-    @test eltype(data(loaded_int)) == Int64
+    @test data(loaded_int[:node_count]) == data(int_field)
+    @test eltype(data(loaded_int[:node_count])) == Int64
 
     float32_values = Float32.(node_values(g))
     float32_field = DiscreteField(NodeLoc, g, float32_values, node_dims(g);
@@ -179,8 +183,8 @@ end
     float32_path = tempname() * ".nc"
     save_ugrid(float32_field, float32_path)
     loaded_float32 = load_ugrid(float32_path)
-    @test data(loaded_float32) == data(float32_field)
-    @test eltype(data(loaded_float32)) == Float32
+    @test data(loaded_float32[:node_temp_float32]) == data(float32_field)
+    @test eltype(data(loaded_float32[:node_temp_float32])) == Float32
 
     unnamed_dimarray = DimArray(node_values(g), node_dims(g))
     unnamed_field = DiscreteField(NodeLoc, g, unnamed_dimarray)
@@ -190,9 +194,9 @@ end
     unnamed_ds = to_ugrid(unnamed_field)
     @test haskey(unnamed_ds.variables, "field")
     loaded_unnamed = load_ugrid(unnamed_path)
-    @test loaded_unnamed isa DiscreteField{NodeLoc}
-    @test DimensionalData.name(loaded_unnamed) == :field
-    @test data(loaded_unnamed) == node_values(g)
+    @test loaded_unnamed isa FieldSet
+    @test DimensionalData.name(loaded_unnamed[:field]) == :field
+    @test data(loaded_unnamed[:field]) == node_values(g)
 
     @test_throws ArgumentError save_ugrid(f, tempname() * ".nc"; format = :unknown)
 end
@@ -231,7 +235,9 @@ end
             "coordinates" => "Mesh2_node_lon Mesh2_node_lat"
         )
     )
-    @test_throws ArgumentError from_ugrid(multi_data_ds)
+    loaded_multi = from_ugrid(multi_data_ds)
+    @test loaded_multi isa FieldSet
+    @test Set(field_names(loaded_multi)) == Set([:node_temp, :other_node_temp])
 
     missing_location_ds = to_ugrid(f)
     delete!(missing_location_ds.variables["node_temp"].attrs, "location")
@@ -271,4 +277,144 @@ end
         copy(mismatched_rank_ds.variables["node_temp"].attrs)
     )
     @test_throws DimensionMismatch from_ugrid(mismatched_rank_ds)
+end
+
+@testset "UGRID FieldSet writer" begin
+    g = small_grid()
+    fs = FieldSet(
+        :u => DiscreteField(NodeLoc, g, node_values(g), node_dims(g); name = :u),
+        :v => DiscreteField(CellLoc, g, cell_values(g), cell_dims(g);
+            name = :v, metadata = Dict("units" => "m2")),
+        :w => DiscreteField(EdgeLoc, g, edge_values(g), edge_dims(g); name = :w)
+    )
+
+    ds = to_ugrid(fs)
+    @test haskey(ds.variables, "Mesh2")
+    @test ds.variables["Mesh2"].attrs["face_coordinates"] == "Mesh2_face_lon Mesh2_face_lat"
+    @test ds.variables["Mesh2"].attrs["edge_node_connectivity"] == "Mesh2_edge_nodes"
+
+    for (key, locstr) in ((:u, "node"), (:v, "face"), (:w, "edge"))
+        @test haskey(ds.variables, String(key))
+        var = ds.variables[String(key)]
+        @test var.attrs["mesh"] == "Mesh2"
+        @test var.attrs["location"] == locstr
+    end
+    @test ds.variables["v"].attrs["units"] == "m2"
+end
+
+@testset "UGRID topology validation" begin
+    g = small_grid()
+    f = DiscreteField(NodeLoc, g, node_values(g), node_dims(g); name = :node_temp)
+    ds = to_ugrid(f)
+
+    # own-file start_index=1 round-trips through validation
+    @test ManifoldFields._validate_topology!(g, ds) === g
+
+    # 0-based external variant also validates
+    ds0 = to_ugrid(f)
+    fn0 = ds0.variables["Mesh2_face_nodes"]
+    fn0.data .= fn0.data .- 1
+    fn0.attrs["start_index"] = 0
+    @test ManifoldFields._validate_topology!(g, ds0) === g
+
+    # missing start_index defaults to 0 (UGRID default)
+    ds_noattr = to_ugrid(f)
+    fn = ds_noattr.variables["Mesh2_face_nodes"]
+    fn.data .= fn.data .- 1
+    delete!(fn.attrs, "start_index")
+    @test ManifoldFields._validate_topology!(g, ds_noattr) === g
+
+    # perturbed connectivity fails
+    ds_bad = to_ugrid(f)
+    ds_bad.variables["Mesh2_face_nodes"].data[1, 1] += 1
+    @test_throws ArgumentError ManifoldFields._validate_topology!(g, ds_bad)
+
+    # wrong node count fails
+    ds_short = to_ugrid(f)
+    ds_short.variables["Mesh2_node_lon"].data = ds_short.variables["Mesh2_node_lon"].data[1:(end - 1)]
+    @test_throws ArgumentError ManifoldFields._validate_topology!(g, ds_short)
+end
+
+@testset "UGRID multi-field round-trip" begin
+    g = small_grid()
+    fs = sample_fieldset(g)
+    ds = to_ugrid(fs)
+
+    loaded = from_ugrid(ds)
+    @test loaded isa FieldSet
+    @test mesh(loaded) === mesh(loaded[:u])
+    @test field_names(loaded) == (:u, :v)
+    @test loaded[:u] isa DiscreteField{NodeLoc}
+    @test loaded[:v] isa DiscreteField{CellLoc}
+    @test data(loaded[:u]) == node_time_values(g)
+    @test data(loaded[:v]) == cell_values(g)
+    @test DimensionalData.dims(loaded[:u]) == node_time_dims(g)
+    @test num_nodes(mesh(loaded)) == num_nodes(g)
+
+    empty_data_ds = to_ugrid(g)
+    @test_throws ArgumentError from_ugrid(empty_data_ds)
+end
+
+@testset "UGRID external file via injected mesh" begin
+    g = small_grid()
+    f = DiscreteField(NodeLoc, g, node_values(g), node_dims(g); name = :node_temp)
+
+    ext = to_ugrid(f)
+    ma = ext.variables["Mesh2"].attrs
+    for k in ("manifoldfields_grid_type", "manifoldfields_lat_edges",
+        "manifoldfields_lon_edges", "manifoldfields_radius")
+        delete!(ma, k)
+    end
+    fn = ext.variables["Mesh2_face_nodes"]
+    fn.data .= fn.data .- 1
+    fn.attrs["start_index"] = 0
+
+    # no mesh source -> error
+    @test_throws ArgumentError from_ugrid_mesh(ext)
+    @test_throws ArgumentError from_ugrid(ext)
+
+    # injected mesh validates (0-based external connectivity)
+    m = from_ugrid_mesh(ext; mesh = g)
+    @test m === g
+    fs = from_ugrid(ext; mesh = g)
+    @test fs isa FieldSet
+    @test data(fs[:node_temp]) == node_values(g)
+
+    # mismatched mesh fails validation
+    g_perturbed = small_grid(; nlat = 3)
+    @test_throws ArgumentError from_ugrid_mesh(ext; mesh = g_perturbed)
+
+    # file-based load_ugrid with mesh injection (kwarg forwarding coverage)
+    ext_path = tempname() * ".nc"
+    save_ugrid(f, ext_path)
+    fs_file = load_ugrid(ext_path; mesh = g)
+    @test fs_file isa FieldSet
+    @test mesh(fs_file) === g
+    @test data(fs_file[:node_temp]) == node_values(g)
+    @test_throws ArgumentError load_ugrid(ext_path; mesh = small_grid(; nlat = 3))
+end
+
+@testset "UGRID NetCDF multi-field round-trip" begin
+    g = small_grid()
+    fs = sample_fieldset(g)
+    path = tempname() * ".nc"
+
+    save_ugrid(fs, path)
+    loaded = load_ugrid(path)
+    @test loaded isa FieldSet
+    @test mesh(loaded) === mesh(loaded[:u])
+    @test data(loaded[:u]) == node_time_values(g)
+    @test data(loaded[:v]) == cell_values(g)
+    @test DimensionalData.dims(loaded[:u]) == node_time_dims(g)
+
+    # dimension-order variant: (time, node) instead of (node, time)
+    fs_tn = FieldSet(
+        :u => DiscreteField(NodeLoc, g, time_node_values(g), time_node_dims(g); name = :u),
+        :v => DiscreteField(CellLoc, g, cell_values(g), cell_dims(g); name = :v)
+    )
+    tn_path = tempname() * ".nc"
+    save_ugrid(fs_tn, tn_path)
+    loaded_tn = load_ugrid(tn_path)
+    @test DimensionalData.dims(loaded_tn[:u]) == time_node_dims(g)
+    @test data(loaded_tn[:u]) == time_node_values(g)
 end
