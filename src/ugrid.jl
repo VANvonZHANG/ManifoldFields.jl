@@ -102,10 +102,8 @@ function _add_own_file_mesh_metadata!(attrs, mesh::CubedSphereGrid)
     attrs["manifoldfields_grid_type"] = "CubedSphereGrid"
     attrs["manifoldfields_n"] = mesh.n
     attrs["manifoldfields_projection"] = _projection_name(ProjectionStyle(typeof(mesh)))
+    attrs["manifoldfields_rotation"] = collect(vec(mesh.rotation))
     attrs["manifoldfields_radius"] = mesh.R
-    # NOTE: CubedSphereGrid does not persist its construction rotation (it is
-    # baked into node coordinates), so no rotation attr is written. Reconstruction
-    # assumes identity rotation and the node-coordinate check rejects rotated grids.
     return attrs
 end
 

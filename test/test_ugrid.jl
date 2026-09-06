@@ -429,7 +429,7 @@ end
     @test a["manifoldfields_n"] == 2
     @test a["manifoldfields_projection"] == "gnomonic"
     @test a["manifoldfields_radius"] == 1.0
-    @test !haskey(a, "manifoldfields_rotation")   # rotation not stored on the grid
+    @test a["manifoldfields_rotation"] == collect(vec(SMatrix{3, 3, Float64, 9}(I)))
 
     rg = ReducedGaussianGrid(nlat = 4)
     a = to_ugrid(rg).variables["Mesh2"].attrs
