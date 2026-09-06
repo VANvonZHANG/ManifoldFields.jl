@@ -56,12 +56,13 @@ face order; its lon convention is [−180, 180). Measured over all 12 288 cells 
 [0, 360) for comparison; Python 0-based index i ↔ Julia cell i+1): `:ring` is ruled out — mean
 same-index center distance 71.17°, nearest-centroid identity for only 4/12 288 cells. `:nested` is the
 identity mapping, but agreement is not to 4 decimals: max same-index angular distance 1.406°
-(mean 0.455°). 8192 cells agree closely (Δlon < 0.05°; Δlat up to 0.23°, since `cell_centroid` is the
-Riemannian mean of the 4 corner vertices — `ManifoldMeshes.jl/src/sphere/healpix.jl:417` — not the
-analytic healpy pixel center); the other 4096 cells sit on alternate equatorial-belt rings where
-ManifoldMeshes omits the canonical half-cell phi stagger (its own `healpix.jl:782` notes "no
-equatorial ring-parity shift"), displacing centroids by exactly ±1.40625° in longitude (latitudes
-still agree to ~0.03°). Sample indices (Julia 1-based; UXarray lon wrapped): 2 → (46.4063, 2.3896) vs
+(mean 0.455°). 7896 cells agree to Δlon < 0.05° (Δlat up to 0.23°), 296 cells blend to Δlon ≤ 0.15°, and the
+remaining 4096 equatorial-belt cells are shifted by exactly ±1.40625° in longitude. The Δlat
+spread reflects `cell_centroid` being the Riemannian mean of the 4 corner vertices —
+`ManifoldMeshes.jl/src/sphere/healpix.jl:417` — not the analytic healpy pixel center; the shifted
+cells sit on alternate equatorial-belt rings where ManifoldMeshes omits the canonical half-cell
+phi stagger (its own `healpix.jl:782` notes "no equatorial ring-parity shift"), with latitudes
+still agreeing to ~0.03°. Sample indices (Julia 1-based; UXarray lon wrapped): 2 → (46.4063, 2.3896) vs
 (46.4062, 2.388); 3 → (43.5938, 2.3896) vs (43.5938, 2.388); 1 → (46.4063, 1.1945) vs (45.0, 1.1937);
 6144 → (91.4063, 40.2542) vs (90.0, 40.2282); 12288 → (316.4063, −1.1947) vs (315.0, −1.1937).
 Notebook 02 therefore uses `ordering = :nested` when wrapping raw values; the index↔position mapping
