@@ -34,6 +34,12 @@ def main() -> None:
     out = uxds.uxgrid.to_xarray()  # UGRID conventions (default grid_format="ugrid")
     for name in uxds.data_vars:
         out[name] = uxds[name].variable  # data vars share the face dimension
+        out[name].attrs.update(uxds[name].attrs)  # keep units/long_name etc.
+        out[name].attrs["mesh"] = "grid_topology"  # UGRID data-var -> topology pointer
+    # The MPAS source carries no units attr for bottomDepth; state the known unit
+    # (ocean bottom depth, meters) so the written file is self-describing.
+    if "bottomDepth" in out.variables:
+        out["bottomDepth"].attrs.setdefault("units", "m")
     args.out.parent.mkdir(parents=True, exist_ok=True)
     out.to_netcdf(args.out)
     print(f"wrote {args.out} ({args.out.stat().st_size / 1e6:.1f} MB)")
