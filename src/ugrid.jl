@@ -2,9 +2,15 @@ import NCDatasets
 import DimensionalData
 import ManifoldMeshes:
                        CellLoc,
+                       CubedSphereGrid,
                        EdgeLoc,
+                       Equiangular,
+                       Gnomomic,
+                       HEALPixGrid,
                        LatLonGrid,
                        NodeLoc,
+                       ProjectionStyle,
+                       ReducedGaussianGrid,
                        cell_centroid,
                        cell_nodes,
                        edge_nodes,
@@ -12,6 +18,7 @@ import ManifoldMeshes:
                        num_cells,
                        num_edges,
                        num_nodes
+import StaticArrays: SMatrix
 
 mutable struct UGridVariable{T}
     data::T
@@ -84,6 +91,36 @@ function _add_own_file_mesh_metadata!(attrs, mesh::LatLonGrid)
     attrs["manifoldfields_grid_type"] = "LatLonGrid"
     attrs["manifoldfields_lat_edges"] = copy(mesh.lat_edges)
     attrs["manifoldfields_lon_edges"] = copy(mesh.lon_edges)
+    attrs["manifoldfields_radius"] = mesh.R
+    return attrs
+end
+
+_projection_name(::Gnomomic) = "gnomonic"
+_projection_name(::Equiangular) = "equiangular"
+
+function _add_own_file_mesh_metadata!(attrs, mesh::CubedSphereGrid)
+    attrs["manifoldfields_grid_type"] = "CubedSphereGrid"
+    attrs["manifoldfields_n"] = mesh.n
+    attrs["manifoldfields_projection"] = _projection_name(ProjectionStyle(typeof(mesh)))
+    attrs["manifoldfields_radius"] = mesh.R
+    # NOTE: CubedSphereGrid does not persist its construction rotation (it is
+    # baked into node coordinates), so no rotation attr is written. Reconstruction
+    # assumes identity rotation and the node-coordinate check rejects rotated grids.
+    return attrs
+end
+
+function _add_own_file_mesh_metadata!(attrs, mesh::ReducedGaussianGrid)
+    attrs["manifoldfields_grid_type"] = "ReducedGaussianGrid"
+    attrs["manifoldfields_nlat"] = mesh.nlat
+    attrs["manifoldfields_radius"] = mesh.R
+    return attrs
+end
+
+function _add_own_file_mesh_metadata!(attrs, mesh::HEALPixGrid)
+    attrs["manifoldfields_grid_type"] = "HEALPixGrid"
+    attrs["manifoldfields_nside"] = mesh.nside
+    attrs["manifoldfields_ordering"] = String(mesh.ordering)
+    attrs["manifoldfields_rotation"] = collect(vec(mesh.rotation))
     attrs["manifoldfields_radius"] = mesh.R
     return attrs
 end

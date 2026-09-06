@@ -1,6 +1,8 @@
 using DimensionalData
+using LinearAlgebra
 using ManifoldFields
 using ManifoldMeshes
+using StaticArrays
 using Test
 
 @testset "UGRID topology writer" begin
@@ -417,4 +419,29 @@ end
     loaded_tn = load_ugrid(tn_path)
     @test DimensionalData.dims(loaded_tn[:u]) == time_node_dims(g)
     @test data(loaded_tn[:u]) == time_node_values(g)
+end
+
+@testset "UGRID own-file mesh metadata writers" begin
+    cs = CubedSphereGrid(n = 2)
+    ds = to_ugrid(cs)
+    a = ds.variables["Mesh2"].attrs
+    @test a["manifoldfields_grid_type"] == "CubedSphereGrid"
+    @test a["manifoldfields_n"] == 2
+    @test a["manifoldfields_projection"] == "gnomonic"
+    @test a["manifoldfields_radius"] == 1.0
+    @test !haskey(a, "manifoldfields_rotation")   # rotation not stored on the grid
+
+    rg = ReducedGaussianGrid(nlat = 4)
+    a = to_ugrid(rg).variables["Mesh2"].attrs
+    @test a["manifoldfields_grid_type"] == "ReducedGaussianGrid"
+    @test a["manifoldfields_nlat"] == 4
+    @test a["manifoldfields_radius"] == 1.0
+
+    hp = HEALPixGrid(nside = 1)
+    a = to_ugrid(hp).variables["Mesh2"].attrs
+    @test a["manifoldfields_grid_type"] == "HEALPixGrid"
+    @test a["manifoldfields_nside"] == 1
+    @test a["manifoldfields_ordering"] == "ring"
+    @test a["manifoldfields_rotation"] == collect(vec(SMatrix{3, 3, Float64, 9}(I)))
+    @test a["manifoldfields_radius"] == 1.0
 end
