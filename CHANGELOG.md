@@ -26,6 +26,7 @@ releases.
   multi-field round-trips, full topology validation with `start_index`
   normalization, and external-file reading via `load_ugrid(path; mesh = ...)`.
 - Add `fields(fs)` and `field_names(fs)` accessors.
+- Reductions on `FieldSet` drop fully-reduced dimensions (unlike DimensionalData's length-1 retention).
 
 ### Changed
 

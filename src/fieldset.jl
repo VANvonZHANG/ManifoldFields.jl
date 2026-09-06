@@ -1,6 +1,7 @@
 import DimensionalData
 import DimensionalData: AbstractDimStack
 import ManifoldMeshes: AbstractLocation, AbstractManifoldMesh
+import Statistics
 
 const _LOCATION_DIM_NAMES = (:node, :edge, :cell)
 
@@ -35,6 +36,10 @@ member's mesh as the authority. Every member must reference the *same* mesh
 object as the authority (`===`); use `withmesh` to rebind fields first.
 
 Indexing with a `Symbol` returns the corresponding `DiscreteField`.
+Reductions (`sum`, `mean`, ...) drop fully-reduced dimensions rather than
+keeping them as length-1 dimensions as DimensionalData does; linear indexing
+`fs[i]` returns a `NamedTuple` of per-field scalars.
+
 """
 struct FieldSet{
     K,
@@ -254,6 +259,27 @@ function Base.merge(s::FieldSet, nt::NamedTuple{<:Any, <:Tuple{Vararg{<:Discrete
     return FieldSet(mesh(s), merge(fields(s), nt))
 end
 Base.merge(s::FieldSet) = s
+function Base.merge(
+        s1::FieldSet, xs::Union{FieldSet, NamedTuple, AbstractDimStack}...;
+        kw...)
+    for x in xs
+        if x isa AbstractDimStack && !(x isa FieldSet)
+            throw(ArgumentError(
+                "FieldSet merge requires FieldSet or NamedTuple arguments, got $(typeof(x))"))
+        end
+        if x isa FieldSet && mesh(x) !== mesh(s1)
+            throw(DimensionMismatch(
+                "FieldSet merge requires identical mesh objects; use withmesh to rebind first"))
+        end
+    end
+    merged = merge(fields(s1), map(x -> x isa FieldSet ? fields(x) : x, xs)...)
+    return FieldSet(mesh(s1), merged)
+end
+function Base.setindex(s::FieldSet, val::DiscreteField, name::Symbol)
+    mesh(val) === mesh(s) || throw(DimensionMismatch(
+        "field :$name mesh does not match the FieldSet mesh (=== required); use withmesh to rebind"))
+    return FieldSet(mesh(s), Base.setindex(fields(s), val, name))
+end
 
 function Base.:(==)(s1::FieldSet, s2::FieldSet)
     mesh(s1) === mesh(s2) || return false
@@ -270,7 +296,6 @@ end
 # DiscreteField validation, which rejects a mesh location extent of length 1
 # (layers that have the location dim) or a layer left with no location
 # dimension at all.
-import Statistics
 
 for (mod,
     fnames) in (:Base => (:sum, :prod, :maximum, :minimum, :extrema),

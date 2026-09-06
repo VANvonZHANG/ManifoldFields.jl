@@ -23,6 +23,6 @@ time_node_values(g) = permutedims(node_time_values(g), (2, 1))
 function sample_fieldset(g)
     return FieldSet(
         :u => DiscreteField(NodeLoc, g, node_time_values(g), node_time_dims(g); name = :u),
-        :v => DiscreteField(CellLoc, g, cell_values(g), cell_dims(g); name = :v),
+        :v => DiscreteField(CellLoc, g, cell_values(g), cell_dims(g); name = :v)
     )
 end

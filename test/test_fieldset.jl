@@ -100,6 +100,10 @@ end
     str = String(take!(io))
     @test occursin("FieldSet", str)
     @test occursin(":u", str)
+
+    # linear indexing pins DimensionalData semantics (per-field scalars, not an error)
+    @test fs[1] isa NamedTuple
+    @test keys(fs[1]) == (:u, :v)
 end
 
 @testset "FieldSet dimensional slicing" begin
@@ -228,6 +232,25 @@ end
             NodeLoc, g3, node_time_values(g3), node_time_dims(g3); name = :u),
         :v => DiscreteField(CellLoc, g3, cell_values(g3), cell_dims(g3); name = :v))
     @test fs != fs_g3
+
+    # stack-stack merge validates mesh identity (same counts, different objects)
+    g_other = small_grid()   # same nlat/nlon as g, distinct object
+    fs_other = FieldSet(g_other,
+        :u => DiscreteField(
+            NodeLoc, g_other, node_time_values(g_other), node_time_dims(g_other); name = :u),
+        :v => DiscreteField(
+            CellLoc, g_other, cell_values(g_other), cell_dims(g_other); name = :v))
+    @test_throws DimensionMismatch merge(fs, fs_other)
+
+    # setindex! style update validates mesh identity
+    w_other = DiscreteField(
+        EdgeLoc, g_other, edge_values(g_other), edge_dims(g_other); name = :w)
+    @test_throws DimensionMismatch Base.setindex(fs, w_other, :w)
+
+    # valid setindex adds the field
+    fs_set = Base.setindex(fs, w, :w)
+    @test field_names(fs_set) == (:u, :v, :w)
+    @test mesh(fs_set) === g
 end
 
 @testset "FieldSet reductions" begin
@@ -244,5 +267,5 @@ end
     @test total isa NamedTuple
     @test total[:v] == sum(cell_values(g))
 
-    @test_throws Exception sum(fs; dims = Dim{:node})
+    @test_throws DimensionMismatch sum(fs; dims = Dim{:node})
 end

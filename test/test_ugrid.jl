@@ -383,6 +383,15 @@ end
     # mismatched mesh fails validation
     g_perturbed = small_grid(; nlat = 3)
     @test_throws ArgumentError from_ugrid_mesh(ext; mesh = g_perturbed)
+
+    # file-based load_ugrid with mesh injection (kwarg forwarding coverage)
+    ext_path = tempname() * ".nc"
+    save_ugrid(f, ext_path)
+    fs_file = load_ugrid(ext_path; mesh = g)
+    @test fs_file isa FieldSet
+    @test mesh(fs_file) === g
+    @test data(fs_file[:node_temp]) == node_values(g)
+    @test_throws ArgumentError load_ugrid(ext_path; mesh = small_grid(; nlat = 3))
 end
 
 @testset "UGRID NetCDF multi-field round-trip" begin
