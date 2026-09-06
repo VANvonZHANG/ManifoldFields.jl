@@ -488,3 +488,20 @@ end
     ds0.variables["Mesh2_node_lon"].data .+= 1.0
     @test_throws ArgumentError from_ugrid_mesh(ds0)
 end
+
+@testset "UGRID FieldSet global-attribute read-back" begin
+    g = small_grid()
+    u = DiscreteField(NodeLoc, g, node_values(g), node_dims(g); name = :u)
+    v = DiscreteField(CellLoc, g, cell_values(g), cell_dims(g); name = :v)
+    fs = FieldSet(g, :u => u, :v => v)
+    fs = DimensionalData.rebuild(fs; metadata = Dict("title" => "demo", "institution" => "X"))
+
+    loaded = from_ugrid(to_ugrid(fs))
+    @test DimensionalData.metadata(loaded)["title"] == "demo"
+    @test DimensionalData.metadata(loaded)["institution"] == "X"
+    @test !haskey(DimensionalData.metadata(loaded), "Conventions")
+
+    # no metadata written -> reconstructed FieldSet keeps NoMetadata (not an empty Dict)
+    plain = from_ugrid(to_ugrid(FieldSet(g, :u => u, :v => v)))
+    @test DimensionalData.metadata(plain) isa DimensionalData.NoMetadata
+end

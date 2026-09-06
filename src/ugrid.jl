@@ -405,7 +405,11 @@ function from_ugrid(ds::UGridDataset; grid_type = nothing, mesh = nothing)
         return DiscreteField(Loc, m, var.data, _dims_from_ugrid(var, Loc);
             name = Symbol(varname), metadata = var.attrs)
     end)
-    return FieldSet(m, fields_nt)
+    fs = FieldSet(m, fields_nt)
+    attrs = copy(ds.attributes)
+    delete!(attrs, "Conventions")
+    isempty(attrs) && return fs
+    return DimensionalData.rebuild(fs; metadata = attrs)
 end
 
 function _define_dimensions!(nc, ds::UGridDataset)
