@@ -2,9 +2,15 @@ import NCDatasets
 import DimensionalData
 import ManifoldMeshes:
                        CellLoc,
+                       CubedSphereGrid,
                        EdgeLoc,
+                       Equiangular,
+                       Gnomomic,
+                       HEALPixGrid,
                        LatLonGrid,
                        NodeLoc,
+                       ProjectionStyle,
+                       ReducedGaussianGrid,
                        cell_centroid,
                        cell_nodes,
                        edge_nodes,
@@ -12,6 +18,7 @@ import ManifoldMeshes:
                        num_cells,
                        num_edges,
                        num_nodes
+import StaticArrays: SMatrix
 
 mutable struct UGridVariable{T}
     data::T
@@ -84,6 +91,34 @@ function _add_own_file_mesh_metadata!(attrs, mesh::LatLonGrid)
     attrs["manifoldfields_grid_type"] = "LatLonGrid"
     attrs["manifoldfields_lat_edges"] = copy(mesh.lat_edges)
     attrs["manifoldfields_lon_edges"] = copy(mesh.lon_edges)
+    attrs["manifoldfields_radius"] = mesh.R
+    return attrs
+end
+
+_projection_name(::Gnomomic) = "gnomonic"
+_projection_name(::Equiangular) = "equiangular"
+
+function _add_own_file_mesh_metadata!(attrs, mesh::CubedSphereGrid)
+    attrs["manifoldfields_grid_type"] = "CubedSphereGrid"
+    attrs["manifoldfields_n"] = mesh.n
+    attrs["manifoldfields_projection"] = _projection_name(ProjectionStyle(typeof(mesh)))
+    attrs["manifoldfields_rotation"] = collect(vec(mesh.rotation))
+    attrs["manifoldfields_radius"] = mesh.R
+    return attrs
+end
+
+function _add_own_file_mesh_metadata!(attrs, mesh::ReducedGaussianGrid)
+    attrs["manifoldfields_grid_type"] = "ReducedGaussianGrid"
+    attrs["manifoldfields_nlat"] = mesh.nlat
+    attrs["manifoldfields_radius"] = mesh.R
+    return attrs
+end
+
+function _add_own_file_mesh_metadata!(attrs, mesh::HEALPixGrid)
+    attrs["manifoldfields_grid_type"] = "HEALPixGrid"
+    attrs["manifoldfields_nside"] = mesh.nside
+    attrs["manifoldfields_ordering"] = String(mesh.ordering)
+    attrs["manifoldfields_rotation"] = collect(vec(mesh.rotation))
     attrs["manifoldfields_radius"] = mesh.R
     return attrs
 end
@@ -251,6 +286,27 @@ function _metadata_float(attrs, name::String)
     throw(ArgumentError("UGRID Mesh2 attribute $name must be numeric"))
 end
 
+function _metadata_int(attrs, name::String)
+    haskey(attrs, name) || throw(ArgumentError("UGRID Mesh2 is missing attribute $name"))
+    value = attrs[name]
+    value isa Integer && return Int(value)
+    throw(ArgumentError("UGRID Mesh2 attribute $name must be an integer"))
+end
+
+function _metadata_string(attrs, name::String)
+    haskey(attrs, name) || throw(ArgumentError("UGRID Mesh2 is missing attribute $name"))
+    value = attrs[name]
+    value isa AbstractString && return String(value)
+    throw(ArgumentError("UGRID Mesh2 attribute $name must be a string"))
+end
+
+function _metadata_rotation(attrs)
+    v = _metadata_vector(attrs, "manifoldfields_rotation")
+    length(v) == 9 || throw(ArgumentError(
+        "UGRID Mesh2 attribute manifoldfields_rotation must have 9 entries"))
+    return SMatrix{3, 3, Float64, 9}(reshape(v, 3, 3))
+end
+
 function _validate_topology!(m, ds::UGridDataset)
     node_lon = _require_var(ds, "Mesh2_node_lon")
     face_nodes = _require_var(ds, "Mesh2_face_nodes")
@@ -266,6 +322,21 @@ function _validate_topology!(m, ds::UGridDataset)
         actual = Int.(collect(face_nodes.data[c, :])) .+ (1 - start_index)
         actual == expected || throw(ArgumentError(
             "UGRID face_node_connectivity row $c does not match mesh connectivity (start_index-normalized)"))
+    end
+    return m
+end
+
+function _validate_node_coordinates!(m, ds::UGridDataset; atol = 1e-8)
+    lon_var = _require_var(ds, "Mesh2_node_lon")
+    lat_var = _require_var(ds, "Mesh2_node_lat")
+    for n in 1:num_nodes(m)
+        lon, lat = _lonlat(node_coordinates(m, n))
+        abs(mod(lon - lon_var.data[n] + 180.0, 360.0) - 180.0) <= atol ||
+            throw(ArgumentError(
+                "reconstructed mesh node $n longitude does not match the UGRID file; the file describes a different geometry — pass mesh= explicitly"))
+        abs(lat - lat_var.data[n]) <= atol ||
+            throw(ArgumentError(
+                "reconstructed mesh node $n latitude does not match the UGRID file; the file describes a different geometry — pass mesh= explicitly"))
     end
     return m
 end
@@ -295,7 +366,26 @@ function from_ugrid_mesh(ds::UGridDataset; grid_type = nothing, mesh = nothing)
         lon_edges = _metadata_vector(attrs, "manifoldfields_lon_edges")
         radius = _metadata_float(attrs, "manifoldfields_radius")
         mesh = LatLonGrid(lat_edges = lat_edges, lon_edges = lon_edges; R = radius)
-        return _validate_topology!(mesh, ds)
+        return _validate_node_coordinates!(_validate_topology!(mesh, ds), ds)
+    elseif requested_grid_type == "CubedSphereGrid"
+        n = _metadata_int(attrs, "manifoldfields_n")
+        projection = Symbol(_metadata_string(attrs, "manifoldfields_projection"))
+        rotation = _metadata_rotation(attrs)
+        radius = _metadata_float(attrs, "manifoldfields_radius")
+        mesh = CubedSphereGrid(n = n, projection = projection, rotation = rotation; R = radius)
+        return _validate_node_coordinates!(_validate_topology!(mesh, ds), ds)
+    elseif requested_grid_type == "ReducedGaussianGrid"
+        nlat = _metadata_int(attrs, "manifoldfields_nlat")
+        radius = _metadata_float(attrs, "manifoldfields_radius")
+        mesh = ReducedGaussianGrid(nlat = nlat; R = radius)
+        return _validate_node_coordinates!(_validate_topology!(mesh, ds), ds)
+    elseif requested_grid_type == "HEALPixGrid"
+        nside = _metadata_int(attrs, "manifoldfields_nside")
+        ordering = Symbol(_metadata_string(attrs, "manifoldfields_ordering"))
+        rotation = _metadata_rotation(attrs)
+        radius = _metadata_float(attrs, "manifoldfields_radius")
+        mesh = HEALPixGrid(nside = nside, ordering = ordering, rotation = rotation; R = radius)
+        return _validate_node_coordinates!(_validate_topology!(mesh, ds), ds)
     end
 
     throw(ArgumentError("cannot reconstruct mesh without supported ManifoldFields mesh metadata"))
@@ -315,7 +405,11 @@ function from_ugrid(ds::UGridDataset; grid_type = nothing, mesh = nothing)
         return DiscreteField(Loc, m, var.data, _dims_from_ugrid(var, Loc);
             name = Symbol(varname), metadata = var.attrs)
     end)
-    return FieldSet(m, fields_nt)
+    fs = FieldSet(m, fields_nt)
+    attrs = copy(ds.attributes)
+    delete!(attrs, "Conventions")
+    isempty(attrs) && return fs
+    return DimensionalData.rebuild(fs; metadata = attrs)
 end
 
 function _define_dimensions!(nc, ds::UGridDataset)

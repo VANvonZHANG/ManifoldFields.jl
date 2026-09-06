@@ -1,6 +1,7 @@
 using DimensionalData
 using ManifoldFields
 using ManifoldMeshes
+using Statistics
 using Test
 
 @testset "location derivation" begin
@@ -268,4 +269,83 @@ end
     @test total[:v] == sum(cell_values(g))
 
     @test_throws DimensionMismatch sum(fs; dims = Dim{:node})
+end
+
+@testset "FieldSet keepdims reductions" begin
+    g = small_grid()
+    fs = sample_fieldset(g)
+
+    s = sum(fs; dims = Dim{:time})                       # default: drop
+    @test DimensionalData.dims(s[:u]) == (Dim{:node}(1:num_nodes(g)),)
+    @test data(s[:u]) == vec(sum(node_time_values(g); dims = 2))
+
+    sk = sum(fs; dims = Dim{:time}, keepdims = true)     # keep length-1
+    dsk = DimensionalData.dims(sk[:u])
+    @test map(DimensionalData.name, dsk) == (:node, :time)   # time retained, not dropped
+    @test length(dsk[2]) == 1   # stock DimensionalData reducelookup keeps a value, not 1:1
+    @test size(data(sk[:u])) == (num_nodes(g), 1)
+
+    fk = Statistics.mean(fs; dims = Dim{:time}, keepdims = true)
+    @test size(data(fk[:u])) == (num_nodes(g), 1)
+end
+
+@testset "FieldSet cat mesh validation" begin
+    g = small_grid()
+    fs1 = sample_fieldset(g)
+    fs2 = 2 .* sample_fieldset(g)
+
+    c = Base.cat(fs1, fs2; dims = Dim{:time})
+    @test c isa FieldSet
+    @test mesh(c) === g
+    @test size(data(c[:u])) == (num_nodes(g), 6)
+
+    g_other = small_grid()   # same counts, different object
+    fs3 = FieldSet(g_other,
+        :u => DiscreteField(
+            NodeLoc, g_other, node_time_values(g), node_time_dims(g); name = :u),
+        :v => DiscreteField(CellLoc, g_other, cell_values(g), cell_dims(g); name = :v))
+    @test_throws DimensionMismatch Base.cat(fs1, fs3; dims = Dim{:time})
+
+    # cat along a location dim is rejected by the validation choke point
+    @test_throws Exception Base.cat(fs1, fs2; dims = Dim{:node})
+
+    # mixed FieldSet/DimStack cat is rejected loudly
+    plain = DimensionalData.DimStack((u = DimArray(
+        node_time_values(g), node_time_dims(g); name = :u),))
+    @test_throws ArgumentError Base.cat(fs1, plain; dims = Dim{:time})
+
+    # asymmetric layer dims are rejected instead of silently dropped/padded
+    u_ntime = DiscreteField(NodeLoc, g, node_values(g), node_dims(g); name = :u)
+    v_c = DiscreteField(CellLoc, g, cell_values(g), cell_dims(g); name = :v)
+    fs_notime = FieldSet(g, :u => u_ntime, :v => v_c)
+    @test_throws DimensionMismatch Base.cat(fs1, fs_notime; dims = Dim{:time})
+    @test_throws DimensionMismatch Base.cat(fs_notime, fs1; dims = Dim{:time})
+
+    # function-argument reduction honors keepdims
+    rk = Base.reduce(+, sample_fieldset(g); dims = Dim{:time}, keepdims = true)
+    @test rk isa FieldSet
+    @test size(data(rk[:u])) == (num_nodes(g), 1)
+end
+
+@testset "FieldSet view and write-through pinning" begin
+    g = small_grid()
+    fs = sample_fieldset(g)
+
+    v = view(fs, :u)
+    @test v isa DiscreteField{NodeLoc}
+    @test parent(v) === DimensionalData.data(fs)[:u]   # shares storage
+
+    fs[:u] .= 0.0   # lowers through dotview/materialize!
+    @test all(iszero, DimensionalData.data(fs)[:u])
+    @test data(fs[:v]) == cell_values(g)              # other fields untouched
+
+    md = Dict("units" => "K")
+    f = DiscreteField(NodeLoc, g, node_values(g), node_dims(g);
+        name = :t, metadata = md, refdims = (Dim{:z}(1:2),))
+    fs2 = FieldSet(g, :t => f)
+    @test DimensionalData.metadata(fs2[:t]) == md
+    # layer metadata round-trips; field-level refdims are not promoted into the
+    # stack (stack refdims stay `()`), pinned so a future change is loud
+    @test DimensionalData.refdims(f) == (Dim{:z}(1:2),)
+    @test DimensionalData.refdims(fs2[:t]) == ()
 end

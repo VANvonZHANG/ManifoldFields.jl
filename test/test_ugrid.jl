@@ -1,6 +1,8 @@
 using DimensionalData
+using LinearAlgebra
 using ManifoldFields
 using ManifoldMeshes
+using StaticArrays
 using Test
 
 @testset "UGRID topology writer" begin
@@ -417,4 +419,108 @@ end
     loaded_tn = load_ugrid(tn_path)
     @test DimensionalData.dims(loaded_tn[:u]) == time_node_dims(g)
     @test data(loaded_tn[:u]) == time_node_values(g)
+end
+
+@testset "UGRID own-file mesh metadata writers" begin
+    cs = CubedSphereGrid(n = 2)
+    ds = to_ugrid(cs)
+    a = ds.variables["Mesh2"].attrs
+    @test a["manifoldfields_grid_type"] == "CubedSphereGrid"
+    @test a["manifoldfields_n"] == 2
+    @test a["manifoldfields_projection"] == "gnomonic"
+    @test a["manifoldfields_radius"] == 1.0
+    @test a["manifoldfields_rotation"] == collect(vec(SMatrix{3, 3, Float64, 9}(I)))
+
+    # asymmetric rotation pins the serialization convention (column-major vec)
+    rot = SMatrix{3, 3, Float64, 9}(0.0, 1.0, 0.0, -1.0, 0.0, 0.0, 0.0, 0.0, 1.0)
+    csr = CubedSphereGrid(n = 2, rotation = rot)
+    a = to_ugrid(csr).variables["Mesh2"].attrs
+    @test a["manifoldfields_rotation"] == collect(vec(rot))
+
+    rg = ReducedGaussianGrid(nlat = 4)
+    a = to_ugrid(rg).variables["Mesh2"].attrs
+    @test a["manifoldfields_grid_type"] == "ReducedGaussianGrid"
+    @test a["manifoldfields_nlat"] == 4
+    @test a["manifoldfields_radius"] == 1.0
+
+    hp = HEALPixGrid(nside = 1)
+    a = to_ugrid(hp).variables["Mesh2"].attrs
+    @test a["manifoldfields_grid_type"] == "HEALPixGrid"
+    @test a["manifoldfields_nside"] == 1
+    @test a["manifoldfields_ordering"] == "ring"
+    @test a["manifoldfields_rotation"] == collect(vec(SMatrix{3, 3, Float64, 9}(I)))
+    @test a["manifoldfields_radius"] == 1.0
+end
+
+@testset "UGRID own-file round-trips for all grid types" begin
+    for g in (CubedSphereGrid(n = 2), ReducedGaussianGrid(nlat = 4), HEALPixGrid(nside = 1))
+        f = DiscreteField(NodeLoc, g, collect(Float64, 1:num_nodes(g)),
+            (Dim{:node}(1:num_nodes(g)),); name = :psi)
+        ds = to_ugrid(f)
+        loaded = from_ugrid(ds)
+        @test loaded isa FieldSet
+        @test typeof(mesh(loaded)) == typeof(g)
+        @test num_nodes(mesh(loaded)) == num_nodes(g)
+        @test num_cells(mesh(loaded)) == num_cells(g)
+        @test data(loaded[:psi]) == data(f)
+    end
+
+    # HEALPix nested ordering round-trips too
+    hp = HEALPixGrid(nside = 1, ordering = :nested)
+    f = DiscreteField(NodeLoc, hp, collect(Float64, 1:num_nodes(hp)),
+        (Dim{:node}(1:num_nodes(hp)),); name = :psi)
+    loaded = from_ugrid(to_ugrid(f))
+    @test typeof(mesh(loaded)) == typeof(hp)
+    @test mesh(loaded).ordering == :nested
+
+    # rotated CubedSphereGrid round-trips exactly (rotation is serialized)
+    rot = SMatrix{3, 3, Float64, 9}(0.0, 1.0, 0.0, -1.0, 0.0, 0.0, 0.0, 0.0, 1.0)
+    csr = CubedSphereGrid(n = 2, rotation = rot)
+    f = DiscreteField(NodeLoc, csr, collect(Float64, 1:num_nodes(csr)),
+        (Dim{:node}(1:num_nodes(csr)),); name = :psi)
+    loaded = from_ugrid(to_ugrid(f))
+    @test typeof(mesh(loaded)) == typeof(csr)
+    @test mesh(loaded).rotation == rot
+    @test data(loaded[:psi]) == data(f)
+    for n in 1:num_nodes(csr)
+        @test node_coordinates(mesh(loaded), n) ≈ node_coordinates(csr, n)
+    end
+
+    # coordinate mismatch fails loudly
+    g0 = ReducedGaussianGrid(nlat = 4)
+    f0 = DiscreteField(NodeLoc, g0, collect(Float64, 1:num_nodes(g0)),
+        (Dim{:node}(1:num_nodes(g0)),); name = :psi)
+    ds0 = to_ugrid(f0)
+    ds0.variables["Mesh2_node_lon"].data .+= 1.0
+    @test_throws ArgumentError from_ugrid_mesh(ds0)
+end
+
+@testset "UGRID rotated grid NetCDF round-trip" begin
+    rot = SMatrix{3, 3, Float64, 9}(0.0, 1.0, 0.0, -1.0, 0.0, 0.0, 0.0, 0.0, 1.0)
+    g = CubedSphereGrid(n = 2, rotation = rot)
+    f = DiscreteField(NodeLoc, g, collect(Float64, 1:num_nodes(g)),
+        (Dim{:node}(1:num_nodes(g)),); name = :psi)
+    path = tempname() * ".nc"
+    save_ugrid(f, path)
+    loaded = load_ugrid(path)
+    @test typeof(mesh(loaded)) == typeof(g)
+    @test mesh(loaded).rotation == rot
+    @test data(loaded[:psi]) == data(f)
+end
+
+@testset "UGRID FieldSet global-attribute read-back" begin
+    g = small_grid()
+    u = DiscreteField(NodeLoc, g, node_values(g), node_dims(g); name = :u)
+    v = DiscreteField(CellLoc, g, cell_values(g), cell_dims(g); name = :v)
+    fs = FieldSet(g, :u => u, :v => v)
+    fs = DimensionalData.rebuild(fs; metadata = Dict("title" => "demo", "institution" => "X"))
+
+    loaded = from_ugrid(to_ugrid(fs))
+    @test DimensionalData.metadata(loaded)["title"] == "demo"
+    @test DimensionalData.metadata(loaded)["institution"] == "X"
+    @test !haskey(DimensionalData.metadata(loaded), "Conventions")
+
+    # no metadata written -> reconstructed FieldSet keeps NoMetadata (not an empty Dict)
+    plain = from_ugrid(to_ugrid(FieldSet(g, :u => u, :v => v)))
+    @test DimensionalData.metadata(plain) isa DimensionalData.NoMetadata
 end
