@@ -28,9 +28,9 @@ releases.
 - Add `fields(fs)` and `field_names(fs)` accessors.
 - Reductions on `FieldSet` drop fully-reduced dimensions (unlike DimensionalData's length-1 retention).
 - Own-file UGRID round-trips for `CubedSphereGrid`, `ReducedGaussianGrid`, and
-  `HEALPixGrid` (constructor-parameter serialization plus node-coordinate and
-  connectivity validation; rotated `CubedSphereGrid` fails loudly — use
-  `mesh=` injection).
+  `HEALPixGrid` (constructor-parameter serialization including `rotation` for
+  `CubedSphereGrid`/`HEALPixGrid`, validated against both connectivity and node
+  coordinates).
 - `keepdims` keyword for `FieldSet` reductions (retain length-1 reduced dims).
 - `from_ugrid` reads UGRID global attributes back into FieldSet-level metadata.
 

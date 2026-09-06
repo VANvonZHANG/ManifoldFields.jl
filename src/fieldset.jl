@@ -38,7 +38,11 @@ object as the authority (`===`); use `withmesh` to rebind fields first.
 Indexing with a `Symbol` returns the corresponding `DiscreteField`.
 Reductions (`sum`, `mean`, ...) drop fully-reduced dimensions rather than
 keeping them as length-1 dimensions as DimensionalData does; linear indexing
-`fs[i]` returns a `NamedTuple` of per-field scalars.
+`fs[i]` returns a `NamedTuple` of per-field scalars. Pass `keepdims = true` to
+retain fully-reduced dimensions as length-1 dimensions; `Base.cat`
+concatenates FieldSets sharing one mesh, passing through layers that lack the
+cat dimension in every FieldSet. `keepdims` has no effect when `dims = :`
+(full reduction returns scalars).
 
 """
 struct FieldSet{
@@ -288,8 +292,9 @@ function Base.:(==)(s1::FieldSet, s2::FieldSet)
            DimensionalData.layerdims(s1) == DimensionalData.layerdims(s2)
 end
 
-# Layers that lack `dims` pass through unchanged (same idiom as the reduction
-# overrides); all input FieldSets must share the same mesh object (`===`).
+# Layers that lack `dims` in ALL stacks pass through unchanged (same idiom as
+# the reduction overrides); all input FieldSets must share the same mesh object
+# (`===`).
 function Base.cat(s1::FieldSet, stacks::FieldSet...; dims, kw...)
     for s in stacks
         mesh(s) === mesh(s1) || throw(DimensionMismatch(
@@ -299,12 +304,27 @@ function Base.cat(s1::FieldSet, stacks::FieldSet...; dims, kw...)
     # mixed-dimension layers: a layer without the cat dimension would gain a
     # length-nstacks axis that conflicts with cat'd layers in combinedims.
     # Follow the FieldSet idiom of reductions and slicing instead: layers
-    # lacking the cat dimension pass through unchanged.
+    # lacking the cat dimension in ALL stacks pass through unchanged.
+    hasdim(key) = !isempty(DimensionalData.commondims(s1[key], dims))
+    hasdim_for(stack, key) = !isempty(DimensionalData.commondims(stack[key], dims))
     layers = map(field_names(s1)) do key
-        isempty(DimensionalData.commondims(s1[key], dims)) && return s1[key]
+        # all-or-none: DimensionalData's per-layer cat would silently pad a
+        # stack whose layer lacks `dims` with a length-1 slice
+        all(stack -> hasdim_for(stack, key) == hasdim(key), stacks) ||
+            throw(DimensionMismatch(
+                "FieldSet cat along $(dims) requires every field to have that dimension in all FieldSets or none; field :$(key) is inconsistent"))
+        if !hasdim(key)
+            return s1[key]   # pass through: no stack has the dim for this layer
+        end
         return cat((s[key] for s in (s1, stacks...))...; dims, kw...)
     end
     return FieldSet(mesh(s1), NamedTuple{field_names(s1)}(Tuple(layers)))
+end
+function Base.cat(s1::FieldSet, stacks::DimensionalData.AbstractDimStack...; kwargs...)
+    all(s -> s isa FieldSet, stacks) && return invoke(Base.cat,
+        Tuple{FieldSet, Vararg{FieldSet}}, s1, stacks...; kwargs...)
+    throw(ArgumentError(
+        "FieldSet cat requires all arguments to be FieldSets sharing one mesh; got $(typeof(s1)) and $(map(typeof, stacks))"))
 end
 
 # Reductions. DimensionalData's inherited stack reductions keep each

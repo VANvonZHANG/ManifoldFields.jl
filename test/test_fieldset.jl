@@ -305,6 +305,26 @@ end
             NodeLoc, g_other, node_time_values(g), node_time_dims(g); name = :u),
         :v => DiscreteField(CellLoc, g_other, cell_values(g), cell_dims(g); name = :v))
     @test_throws DimensionMismatch Base.cat(fs1, fs3; dims = Dim{:time})
+
+    # cat along a location dim is rejected by the validation choke point
+    @test_throws Exception Base.cat(fs1, fs2; dims = Dim{:node})
+
+    # mixed FieldSet/DimStack cat is rejected loudly
+    plain = DimensionalData.DimStack((u = DimArray(
+        node_time_values(g), node_time_dims(g); name = :u),))
+    @test_throws ArgumentError Base.cat(fs1, plain; dims = Dim{:time})
+
+    # asymmetric layer dims are rejected instead of silently dropped/padded
+    u_ntime = DiscreteField(NodeLoc, g, node_values(g), node_dims(g); name = :u)
+    v_c = DiscreteField(CellLoc, g, cell_values(g), cell_dims(g); name = :v)
+    fs_notime = FieldSet(g, :u => u_ntime, :v => v_c)
+    @test_throws DimensionMismatch Base.cat(fs1, fs_notime; dims = Dim{:time})
+    @test_throws DimensionMismatch Base.cat(fs_notime, fs1; dims = Dim{:time})
+
+    # function-argument reduction honors keepdims
+    rk = Base.reduce(+, sample_fieldset(g); dims = Dim{:time}, keepdims = true)
+    @test rk isa FieldSet
+    @test size(data(rk[:u])) == (num_nodes(g), 1)
 end
 
 @testset "FieldSet view and write-through pinning" begin

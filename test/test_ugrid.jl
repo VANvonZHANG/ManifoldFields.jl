@@ -431,6 +431,12 @@ end
     @test a["manifoldfields_radius"] == 1.0
     @test a["manifoldfields_rotation"] == collect(vec(SMatrix{3, 3, Float64, 9}(I)))
 
+    # asymmetric rotation pins the serialization convention (column-major vec)
+    rot = SMatrix{3, 3, Float64, 9}(0.0, 1.0, 0.0, -1.0, 0.0, 0.0, 0.0, 0.0, 1.0)
+    csr = CubedSphereGrid(n = 2, rotation = rot)
+    a = to_ugrid(csr).variables["Mesh2"].attrs
+    @test a["manifoldfields_rotation"] == collect(vec(rot))
+
     rg = ReducedGaussianGrid(nlat = 4)
     a = to_ugrid(rg).variables["Mesh2"].attrs
     @test a["manifoldfields_grid_type"] == "ReducedGaussianGrid"
@@ -487,6 +493,19 @@ end
     ds0 = to_ugrid(f0)
     ds0.variables["Mesh2_node_lon"].data .+= 1.0
     @test_throws ArgumentError from_ugrid_mesh(ds0)
+end
+
+@testset "UGRID rotated grid NetCDF round-trip" begin
+    rot = SMatrix{3, 3, Float64, 9}(0.0, 1.0, 0.0, -1.0, 0.0, 0.0, 0.0, 0.0, 1.0)
+    g = CubedSphereGrid(n = 2, rotation = rot)
+    f = DiscreteField(NodeLoc, g, collect(Float64, 1:num_nodes(g)),
+        (Dim{:node}(1:num_nodes(g)),); name = :psi)
+    path = tempname() * ".nc"
+    save_ugrid(f, path)
+    loaded = load_ugrid(path)
+    @test typeof(mesh(loaded)) == typeof(g)
+    @test mesh(loaded).rotation == rot
+    @test data(loaded[:psi]) == data(f)
 end
 
 @testset "UGRID FieldSet global-attribute read-back" begin
