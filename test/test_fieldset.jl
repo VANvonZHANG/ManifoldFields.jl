@@ -306,3 +306,26 @@ end
         :v => DiscreteField(CellLoc, g_other, cell_values(g), cell_dims(g); name = :v))
     @test_throws DimensionMismatch Base.cat(fs1, fs3; dims = Dim{:time})
 end
+
+@testset "FieldSet view and write-through pinning" begin
+    g = small_grid()
+    fs = sample_fieldset(g)
+
+    v = view(fs, :u)
+    @test v isa DiscreteField{NodeLoc}
+    @test parent(v) === DimensionalData.data(fs)[:u]   # shares storage
+
+    fs[:u] .= 0.0   # lowers through dotview/materialize!
+    @test all(iszero, DimensionalData.data(fs)[:u])
+    @test data(fs[:v]) == cell_values(g)              # other fields untouched
+
+    md = Dict("units" => "K")
+    f = DiscreteField(NodeLoc, g, node_values(g), node_dims(g);
+        name = :t, metadata = md, refdims = (Dim{:z}(1:2),))
+    fs2 = FieldSet(g, :t => f)
+    @test DimensionalData.metadata(fs2[:t]) == md
+    # layer metadata round-trips; field-level refdims are not promoted into the
+    # stack (stack refdims stay `()`), pinned so a future change is loud
+    @test DimensionalData.refdims(f) == (Dim{:z}(1:2),)
+    @test DimensionalData.refdims(fs2[:t]) == ()
+end

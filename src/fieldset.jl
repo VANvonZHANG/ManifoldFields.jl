@@ -288,6 +288,8 @@ function Base.:(==)(s1::FieldSet, s2::FieldSet)
            DimensionalData.layerdims(s1) == DimensionalData.layerdims(s2)
 end
 
+# Layers that lack `dims` pass through unchanged (same idiom as the reduction
+# overrides); all input FieldSets must share the same mesh object (`===`).
 function Base.cat(s1::FieldSet, stacks::FieldSet...; dims, kw...)
     for s in stacks
         mesh(s) === mesh(s1) || throw(DimensionMismatch(
