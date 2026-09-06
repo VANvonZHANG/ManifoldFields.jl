@@ -47,4 +47,24 @@ ManifoldFields reconstructs one of its four grid types from own-file UGRID metad
 an arbitrary MPAS quad topology matches none of them. `load_ugrid(path; mesh = m)`
 exists for foreign files whose geometry *does* match a ManifoldMeshes grid.
 
-**HEALPix ordering** (Task 4 fills this in): pending measurement.
+**HEALPix ordering** (`psi_healpix.nc`): cell order matches `HEALPixGrid(nside = 32, ordering = :nested)`.
+UXarray 2026.7.0 has no `open_dataset(source = "healpix", nside = ...)` — the `source` kwarg itself
+raises `TypeError` (rejected by the NetCDF backend); the verified open is
+`ux.UxDataset.from_healpix(path)`, which infers zoom = 5 (nside = 32) from the 12 288-cell count and
+builds face centers via healpy `pix2ang(..., nest = True)` (uxarray `io/_healpix.py:110`), i.e. nested
+face order; its lon convention is [−180, 180). Measured over all 12 288 cells (UXarray lon wrapped to
+[0, 360) for comparison; Python 0-based index i ↔ Julia cell i+1): `:ring` is ruled out — mean
+same-index center distance 71.17°, nearest-centroid identity for only 4/12 288 cells. `:nested` is the
+identity mapping, but agreement is not to 4 decimals: max same-index angular distance 1.406°
+(mean 0.455°). 8192 cells agree closely (Δlon < 0.05°; Δlat up to 0.23°, since `cell_centroid` is the
+Riemannian mean of the 4 corner vertices — `ManifoldMeshes.jl/src/sphere/healpix.jl:417` — not the
+analytic healpy pixel center); the other 4096 cells sit on alternate equatorial-belt rings where
+ManifoldMeshes omits the canonical half-cell phi stagger (its own `healpix.jl:782` notes "no
+equatorial ring-parity shift"), displacing centroids by exactly ±1.40625° in longitude (latitudes
+still agree to ~0.03°). Sample indices (Julia 1-based; UXarray lon wrapped): 2 → (46.4063, 2.3896) vs
+(46.4062, 2.388); 3 → (43.5938, 2.3896) vs (43.5938, 2.388); 1 → (46.4063, 1.1945) vs (45.0, 1.1937);
+6144 → (91.4063, 40.2542) vs (90.0, 40.2282); 12288 → (316.4063, −1.1947) vs (315.0, −1.1937).
+Notebook 02 therefore uses `ordering = :nested` when wrapping raw values; the index↔position mapping
+follows the canonical nested scheme on both sides, but ManifoldMeshes centroid *positions* on the 4096
+staggered-ring cells differ from healpy's by half a cell in longitude, so cell-by-cell comparisons
+against file values must map by index, not by recomputed coordinates.
