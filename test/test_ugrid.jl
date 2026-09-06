@@ -479,4 +479,12 @@ end
     for n in 1:num_nodes(csr)
         @test node_coordinates(mesh(loaded), n) ≈ node_coordinates(csr, n)
     end
+
+    # coordinate mismatch fails loudly
+    g0 = ReducedGaussianGrid(nlat = 4)
+    f0 = DiscreteField(NodeLoc, g0, collect(Float64, 1:num_nodes(g0)),
+        (Dim{:node}(1:num_nodes(g0)),); name = :psi)
+    ds0 = to_ugrid(f0)
+    ds0.variables["Mesh2_node_lon"].data .+= 1.0
+    @test_throws ArgumentError from_ugrid_mesh(ds0)
 end

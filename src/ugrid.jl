@@ -333,10 +333,10 @@ function _validate_node_coordinates!(m, ds::UGridDataset; atol = 1e-8)
         lon, lat = _lonlat(node_coordinates(m, n))
         abs(mod(lon - lon_var.data[n] + 180.0, 360.0) - 180.0) <= atol ||
             throw(ArgumentError(
-                "reconstructed mesh node $n longitude does not match the UGRID file; grids constructed with a rotation are not persisted — pass mesh= explicitly"))
+                "reconstructed mesh node $n longitude does not match the UGRID file; the file describes a different geometry — pass mesh= explicitly"))
         abs(lat - lat_var.data[n]) <= atol ||
             throw(ArgumentError(
-                "reconstructed mesh node $n latitude does not match the UGRID file; grids constructed with a rotation are not persisted — pass mesh= explicitly"))
+                "reconstructed mesh node $n latitude does not match the UGRID file; the file describes a different geometry — pass mesh= explicitly"))
     end
     return m
 end
