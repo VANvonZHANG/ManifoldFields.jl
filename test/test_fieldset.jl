@@ -1,6 +1,7 @@
 using DimensionalData
 using ManifoldFields
 using ManifoldMeshes
+using Statistics
 using Test
 
 @testset "location derivation" begin
@@ -268,4 +269,40 @@ end
     @test total[:v] == sum(cell_values(g))
 
     @test_throws DimensionMismatch sum(fs; dims = Dim{:node})
+end
+
+@testset "FieldSet keepdims reductions" begin
+    g = small_grid()
+    fs = sample_fieldset(g)
+
+    s = sum(fs; dims = Dim{:time})                       # default: drop
+    @test DimensionalData.dims(s[:u]) == (Dim{:node}(1:num_nodes(g)),)
+    @test data(s[:u]) == vec(sum(node_time_values(g); dims = 2))
+
+    sk = sum(fs; dims = Dim{:time}, keepdims = true)     # keep length-1
+    dsk = DimensionalData.dims(sk[:u])
+    @test map(DimensionalData.name, dsk) == (:node, :time)   # time retained, not dropped
+    @test length(dsk[2]) == 1   # stock DimensionalData reducelookup keeps a value, not 1:1
+    @test size(data(sk[:u])) == (num_nodes(g), 1)
+
+    fk = Statistics.mean(fs; dims = Dim{:time}, keepdims = true)
+    @test size(data(fk[:u])) == (num_nodes(g), 1)
+end
+
+@testset "FieldSet cat mesh validation" begin
+    g = small_grid()
+    fs1 = sample_fieldset(g)
+    fs2 = 2 .* sample_fieldset(g)
+
+    c = Base.cat(fs1, fs2; dims = Dim{:time})
+    @test c isa FieldSet
+    @test mesh(c) === g
+    @test size(data(c[:u])) == (num_nodes(g), 6)
+
+    g_other = small_grid()   # same counts, different object
+    fs3 = FieldSet(g_other,
+        :u => DiscreteField(
+            NodeLoc, g_other, node_time_values(g), node_time_dims(g); name = :u),
+        :v => DiscreteField(CellLoc, g_other, cell_values(g), cell_dims(g); name = :v))
+    @test_throws DimensionMismatch Base.cat(fs1, fs3; dims = Dim{:time})
 end

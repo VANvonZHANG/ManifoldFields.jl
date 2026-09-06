@@ -288,6 +288,23 @@ function Base.:(==)(s1::FieldSet, s2::FieldSet)
            DimensionalData.layerdims(s1) == DimensionalData.layerdims(s2)
 end
 
+function Base.cat(s1::FieldSet, stacks::FieldSet...; dims, kw...)
+    for s in stacks
+        mesh(s) === mesh(s1) || throw(DimensionMismatch(
+            "FieldSet cat requires identical mesh objects; use withmesh to rebind first"))
+    end
+    # DimensionalData's stack cat (invoke/rebuild_from_arrays) cannot handle
+    # mixed-dimension layers: a layer without the cat dimension would gain a
+    # length-nstacks axis that conflicts with cat'd layers in combinedims.
+    # Follow the FieldSet idiom of reductions and slicing instead: layers
+    # lacking the cat dimension pass through unchanged.
+    layers = map(field_names(s1)) do key
+        isempty(DimensionalData.commondims(s1[key], dims)) && return s1[key]
+        return cat((s[key] for s in (s1, stacks...))...; dims, kw...)
+    end
+    return FieldSet(mesh(s1), NamedTuple{field_names(s1)}(Tuple(layers)))
+end
+
 # Reductions. DimensionalData's inherited stack reductions keep each
 # fully-reduced dimension as a length-1 dimension in every affected layer; for
 # FieldSet those dimensions are dropped instead, so `sum(fs; dims = Dim{:time})`
@@ -295,20 +312,22 @@ end
 # along a location dimension throws: the per-layer rebuild goes through
 # DiscreteField validation, which rejects a mesh location extent of length 1
 # (layers that have the location dim) or a layer left with no location
-# dimension at all.
+# dimension at all. `keepdims = true` retains fully-reduced dimensions as
+# length-1 dimensions (DimensionalData semantics); the default drops them.
 
 for (mod,
     fnames) in (:Base => (:sum, :prod, :maximum, :minimum, :extrema),
     :Statistics => (:mean, :median, :std, :var))
     for fname in fnames
-        @eval function $(mod).$(fname)(s::FieldSet; dims = :, kw...)
+        @eval function $(mod).$(fname)(s::FieldSet; dims = :, keepdims = false, kw...)
             return DimensionalData.maplayers(s) do A
                 if dims isa Colon
                     return $(mod).$(fname)(A; dims = :, kw...)
                 end
                 ld = DimensionalData.commondims(A, dims)
                 isempty(ld) && return A   # layer untouched by this reduction
-                return Base.dropdims($(mod).$(fname)(A; dims = ld, kw...); dims = ld)
+                reduced = $(mod).$(fname)(A; dims = ld, kw...)
+                return keepdims ? reduced : Base.dropdims(reduced; dims = ld)
             end
         end
     end
@@ -317,14 +336,15 @@ for (mod,
     fnames) in (:Base => (:reduce, :sum, :prod, :maximum, :minimum, :extrema),
     :Statistics => (:mean,))
     for fname in fnames
-        @eval function $(mod).$(fname)(f::Function, s::FieldSet; dims = Colon())
+        @eval function $(mod).$(fname)(f::Function, s::FieldSet; dims = Colon(), keepdims = false)
             return DimensionalData.maplayers(s) do A
                 if dims isa Colon
                     return $(mod).$(fname)(f, A; dims = :)
                 end
                 ld = DimensionalData.commondims(A, dims)
                 isempty(ld) && return A   # layer untouched by this reduction
-                return Base.dropdims($(mod).$(fname)(f, A; dims = ld); dims = ld)
+                reduced = $(mod).$(fname)(f, A; dims = ld)
+                return keepdims ? reduced : Base.dropdims(reduced; dims = ld)
             end
         end
     end
