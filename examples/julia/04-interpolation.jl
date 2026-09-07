@@ -12,7 +12,8 @@ queries on the roadmap. Twin notebook: `python/04-interpolation.py`.
 begin
     import Pkg
     Pkg.activate(@__DIR__; io = devnull)
-    if isnothing(Base.find_package("ManifoldFields")) || isnothing(Base.find_package("ManifoldMeshes"))
+    if isnothing(Base.find_package("ManifoldFields")) ||
+       isnothing(Base.find_package("ManifoldMeshes"))
         # Bootstrap on a fresh clone (Pluto's nbpkg cannot use [sources] on Julia 1.10):
         Pkg.develop(path = joinpath(@__DIR__, "..", ".."); io = devnull)
         Pkg.add(url = "https://github.com/VANvonZHANG/ManifoldMeshes.jl"; io = devnull)
@@ -101,4 +102,3 @@ ManifoldMeshes.
 
 The full UXarray ↔ ManifoldFields picture: [`CAPABILITY_MAP.md`](../CAPABILITY_MAP.md).
 """
-

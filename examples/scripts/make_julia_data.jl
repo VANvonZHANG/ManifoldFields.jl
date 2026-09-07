@@ -22,10 +22,11 @@ function lonlat(p)
 end
 
 meshes = (
-    ("latlon_analytic", LatLonGrid(lat_edges = collect(-90.0:5.0:90.0),
-                                   lon_edges = collect(0.0:5.0:360.0))),
+    ("latlon_analytic",
+        LatLonGrid(lat_edges = collect(-90.0:5.0:90.0),
+            lon_edges = collect(0.0:5.0:360.0))),
     ("cubedsphere_analytic", CubedSphereGrid(n = 24)),
-    ("healpix_analytic", HEALPixGrid(nside = 32)),
+    ("healpix_analytic", HEALPixGrid(nside = 32))
 )
 
 for (name, m) in meshes

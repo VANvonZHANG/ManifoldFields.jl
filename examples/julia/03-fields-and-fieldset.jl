@@ -12,7 +12,8 @@ mesh, like a `UxDataset`. Twin notebook: `python/03-fields-and-fieldset.py`.
 begin
     import Pkg
     Pkg.activate(@__DIR__; io = devnull)
-    if isnothing(Base.find_package("ManifoldFields")) || isnothing(Base.find_package("ManifoldMeshes"))
+    if isnothing(Base.find_package("ManifoldFields")) ||
+       isnothing(Base.find_package("ManifoldMeshes"))
         # Bootstrap on a fresh clone (Pluto's nbpkg cannot use [sources] on Julia 1.10):
         Pkg.develop(path = joinpath(@__DIR__, "..", ".."); io = devnull)
         Pkg.add(url = "https://github.com/VANvonZHANG/ManifoldMeshes.jl"; io = devnull)
@@ -40,9 +41,9 @@ end
 # ╔═╡ 00000000-0000-4000-8000-000000000026
 begin
     node_t = DiscreteField(NodeLoc, g, randn(num_nodes(g)),
-                           (Dim{:node}(1:num_nodes(g)),); name = :node_t)
+        (Dim{:node}(1:num_nodes(g)),); name = :node_t)
     cell_t = DiscreteField(CellLoc, g, randn(num_cells(g)),
-                           (Dim{:cell}(1:num_cells(g)),); name = :cell_t)
+        (Dim{:cell}(1:num_cells(g)),); name = :cell_t)
 end
 
 # ╔═╡ 00000000-0000-4000-8000-000000000027
@@ -97,7 +98,7 @@ mean(fs)  # NamedTuple of scalars, one entry per field
 # ╔═╡ 00000000-0000-4000-8000-00000000002d
 begin
     node_t4 = DiscreteField(NodeLoc, g, randn(4, num_nodes(g)),
-                            (Dim{:time}(1:4), Dim{:node}(1:num_nodes(g))); name = :node_t)
+        (Dim{:time}(1:4), Dim{:node}(1:num_nodes(g))); name = :node_t)
     fs_t = FieldSet(g, :node_t => node_t4)
     dims(node_t4)
 end
@@ -105,7 +106,7 @@ end
 # ╔═╡ 00000000-0000-4000-8000-00000000002e
 begin
     dropped = mean(fs_t; dims = Dim{:time})                  # Dim{:time} dropped
-    kept    = mean(fs_t; dims = Dim{:time}, keepdims = true) # retained, length 1
+    kept = mean(fs_t; dims = Dim{:time}, keepdims = true) # retained, length 1
     (dims(dropped[:node_t]), dims(kept[:node_t]))
 end
 
@@ -139,4 +140,3 @@ Location-aware fields, one mesh shared by many variables, broadcasts that
 preserve metadata, reductions that drop dims by default — and location dims
 that refuse to be reduced at all. Next: **04 · Point Interpolation**.
 """
-

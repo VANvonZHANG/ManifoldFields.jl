@@ -24,7 +24,7 @@ const FILES = [
     "psi_healpix.nc",
     "latlon_analytic.nc",
     "cubedsphere_analytic.nc",
-    "healpix_analytic.nc",
+    "healpix_analytic.nc"
 ]
 
 for f in FILES
@@ -45,9 +45,10 @@ adir = Pkg.artifact_path(hash)
 run(`tar -czf $TARBALL -C $adir $FILES`)
 sha = bytes2hex(open(SHA.sha256, TARBALL))
 Pkg.Artifacts.bind_artifact!(TOML, "example-data", hash;
-                             download_info = [(URL, sha)], lazy = true, force = true)
+    download_info = [(URL, sha)], lazy = true, force = true)
 println("artifact tree hash: ", hash)
 println("tarball sha256:     ", sha)
-println("tarball:            ", TARBALL, " (", round(filesize(TARBALL) / 1e6; digits = 1), " MB)")
+println("tarball:            ", TARBALL, " (",
+    round(filesize(TARBALL) / 1e6; digits = 1), " MB)")
 println("manifest:           ", TOML)
 println("upload:  gh release create $(TAG) $(TARBALL) --title \"$(TAG)\" --notes \"Example data for the UXarray comparison tutorial\"")

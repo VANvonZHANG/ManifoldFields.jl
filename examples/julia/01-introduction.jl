@@ -16,7 +16,8 @@ begin
     Pkg.activate(@__DIR__; io = devnull)
     # NB: test loadability, not Pkg.project().dependencies — the committed Project.toml
     # already lists the [deps], so only the Manifest (gitignored) tells fresh clones apart.
-    if isnothing(Base.find_package("ManifoldFields")) || isnothing(Base.find_package("ManifoldMeshes"))
+    if isnothing(Base.find_package("ManifoldFields")) ||
+       isnothing(Base.find_package("ManifoldMeshes"))
         # Bootstrap on a fresh clone (Pluto's nbpkg cannot use [sources] on Julia 1.10):
         Pkg.develop(path = joinpath(@__DIR__, "..", ".."); io = devnull)
         Pkg.add(url = "https://github.com/VANvonZHANG/ManifoldMeshes.jl"; io = devnull)
@@ -87,4 +88,3 @@ md"""
 
 Next: **02 · Grids & UGRID IO**.
 """
-

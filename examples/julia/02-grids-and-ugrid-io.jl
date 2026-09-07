@@ -12,7 +12,8 @@ both sides of that boundary. Twin notebook: `python/02-grids-and-ugrid-io.py`.
 begin
     import Pkg
     Pkg.activate(@__DIR__; io = devnull)
-    if isnothing(Base.find_package("ManifoldFields")) || isnothing(Base.find_package("ManifoldMeshes"))
+    if isnothing(Base.find_package("ManifoldFields")) ||
+       isnothing(Base.find_package("ManifoldMeshes"))
         # Bootstrap on a fresh clone (Pluto's nbpkg cannot use [sources] on Julia 1.10):
         Pkg.develop(path = joinpath(@__DIR__, "..", ".."); io = devnull)
         Pkg.add(url = "https://github.com/VANvonZHANG/ManifoldMeshes.jl"; io = devnull)
@@ -44,11 +45,12 @@ uxgrid = ux.open_grid(grid_path)                # topology only
 # ╔═╡ 00000000-0000-4000-8000-000000000016
 begin
     meshes = (
-        ("LatLonGrid", LatLonGrid(lat_edges = collect(-90.0:10.0:90.0),
-                                  lon_edges = collect(0.0:10.0:360.0))),
+        ("LatLonGrid",
+            LatLonGrid(lat_edges = collect(-90.0:10.0:90.0),
+                lon_edges = collect(0.0:10.0:360.0))),
         ("CubedSphereGrid", CubedSphereGrid(n = 16)),
         ("ReducedGaussianGrid", ReducedGaussianGrid(nlat = 64)),
-        ("HEALPixGrid", HEALPixGrid(nside = 32)),
+        ("HEALPixGrid", HEALPixGrid(nside = 32))
     )
     [(name, num_cells(m)) for (name, m) in meshes]
 end
@@ -108,7 +110,8 @@ begin
     psi_raw = Array(ds["psi"][:])
     close(ds)
     hp = HEALPixGrid(nside = 32, ordering = :nested)
-    psi_hp = DiscreteField(CellLoc, hp, psi_raw, (Dim{:cell}(1:num_cells(hp)),); name = :psi)
+    psi_hp = DiscreteField(
+        CellLoc, hp, psi_raw, (Dim{:cell}(1:num_cells(hp)),); name = :psi)
     length(psi_raw) == num_cells(hp)
 end
 
@@ -120,4 +123,3 @@ Construct grids from parameters; persist any `FieldSet` as UGRID and read it
 back exactly. Foreign topologies are UXarray's home turf — ManifoldFields
 excels when the sphere grid itself is first-class. Next: **03 · Fields & FieldSet**.
 """
-
