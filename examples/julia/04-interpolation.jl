@@ -86,10 +86,19 @@ exposed a real bug, not a too-coarse grid: `LatLonGrid` feeds
 `_bilinear_weights` the latitude and longitude fractions swapped, so the SE
 and NW corner weights land on each other's nodes (at (-80, 299) the weights
 come back `(0.2, 0.0, 0.0, 0.8)` where correct bilinear gives
-`(0.2, 0.8, 0.0, 0.0)` — an error of ~1e-4 there). Interpolation stays exact
-at nodes and along the cell diagonal, which is why the (12.3, 45.6) probe
-above still agrees with the truth to ~7e-3. Fix pending upstream in
-ManifoldMeshes. Next: `CAPABILITY_MAP.md` for everything UXarray does that
-we do not (yet).
+`(0.2, 0.8, 0.0, 0.0)` — an error of ~1e-4 there). The transposition error
+is `|latfrac − lonfrac| · |V_SE − V_NW|` — it vanishes at nodes and along
+the cell diagonal, and the (12.3, 45.6) probe is small simply because
+`|V_SE − V_NW|` is locally small there (~0.02). Fix pending upstream in
+ManifoldMeshes.
+
+## Recap
+
+| here (ManifoldFields) | twin (UXarray) |
+|---|---|
+| `interpolate(f, lat, lon)` — interpolated value | ball-tree nearest cell (`get_ball_tree()`) |
+| point queries today; batched queries roadmap | grid-to-grid via `remap.nearest_neighbor` / `.bilinear` |
+
+The full UXarray ↔ ManifoldFields picture: [`CAPABILITY_MAP.md`](CAPABILITY_MAP.md).
 """
 
