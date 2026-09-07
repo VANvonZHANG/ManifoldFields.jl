@@ -15,7 +15,7 @@ notebook runs for real in its twin.
 | `UxDataset` / `.uxgrid` | `FieldSet` / `mesh(fs)` |
 | any UGRID topology (MPAS, ICON, SCRIP, Exodus, …) | four manifold-native grid types: `LatLonGrid`, `CubedSphereGrid`, `ReducedGaussianGrid`, `HEALPixGrid` |
 | `uxgrid.to_xarray(grid_format="ugrid")` | `to_ugrid(mesh)` / `save_ugrid(fs, path)` |
-| `da.mean(dim=...)` (keeps length-1 dims) | `mean(fs; dims = ..., keepdims = false)` (dims dropped by default) |
+| `da.mean(dim=...)` (drops reduced dims; `keepdims=True` opts in) | `mean(fs; dims = ..., keepdims = false)` (same default — and location dims are mesh-protected) |
 | `get_ball_tree()` / `remap.nearest_neighbor(...)` | `interpolate(field, lat, lon)` (true interpolation) |
 
 See [CAPABILITY_MAP.md](CAPABILITY_MAP.md) for full coverage and
