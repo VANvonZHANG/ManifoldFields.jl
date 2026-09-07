@@ -73,10 +73,11 @@ end
 md"""
 ## The other direction: a foreign UGRID file
 
-UXarray wrote `oQU480.ugrid.nc` from an MPAS mesh. The load stops at the very
-first stage: ManifoldFields looks up the UGRID topology container under its
-own writer name — `_require_var(ds, "Mesh2")` in `src/ugrid.jl` — while
-uxarray names the container `grid_topology`. And even past that stage, an
+UXarray wrote `oQU480.ugrid.nc` from an MPAS mesh. Data-variable discovery
+succeeds, then the load fails during grid reconstruction: ManifoldFields
+looks up the UGRID topology container under its own writer name —
+`_require_var(ds, "Mesh2")` in `src/ugrid.jl` — while uxarray names the
+container `grid_topology`. And even past that stage, an
 arbitrary MPAS quadrilateral topology would match none of the four grid types
 `load_ugrid` can reconstruct from own-file metadata. When a foreign file's
 geometry *does* match, pass `load_ugrid(path; mesh = m)`.

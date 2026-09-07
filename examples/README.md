@@ -3,8 +3,9 @@
 Side-by-side notebooks for UXarray (Python) users adopting ManifoldFields.jl
 (Julia). Each chapter is a pair — `julia/NN-name.jl` (Pluto) and
 `python/NN-name.py` (marimo) — with identical section titles and one-to-one
-cells, so you can run both and compare. Every "✦ equivalent" snippet in one
-notebook runs for real in its twin.
+cells, so you can run both and compare. Every "✦ equivalent" snippet shown
+in one notebook runs for real in its twin (one exception: the
+`ux.open_grid` one-liner in chapter 02, shown for API comparison).
 
 ## Concept map
 
@@ -48,7 +49,8 @@ marimo edit examples/python/01-introduction.py
 ### Data
 
 Notebooks download the shared datasets on first run (≈2.4 MB, sha256-verified)
-into the gitignored `data/` directory. Julia resolves `Artifacts.toml` with
+into the gitignored `data/` directory (Python: `examples/data/`; Julia: the
+artifact depot). Julia resolves `Artifacts.toml` with
 `Pkg.ensure_artifact_installed`; Python reads the same manifest through
 `python/_data.py`. Nothing is bundled with `Pkg.add("ManifoldFields")`.
 
