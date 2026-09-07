@@ -292,7 +292,7 @@ function _find_data_vars(ds::UGridDataset, topology_name::String, aux)
     return sort!([name
                   for (name, var) in ds.variables
                   if get(var.attrs, "mesh", "") == topology_name && !(name in aux) &&
-                     !haskey(var.attrs, "cf_role")])
+                         !haskey(var.attrs, "cf_role")])
 end
 
 function _infer_location(var::UGridVariable, meshvar::UGridVariable)
