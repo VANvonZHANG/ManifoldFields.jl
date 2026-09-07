@@ -1,13 +1,13 @@
 # UXarray ↔ ManifoldFields capability map
 
 Rows follow the UXarray user guide (https://uxarray.readthedocs.io/).
-"roadmap" items live in [../ROADMAP.md](../ROADMAP.md).
+Remapping and batch-interpolation roadmap items live in [../ROADMAP.md](../ROADMAP.md).
 
 | UXarray capability | UXarray API | ManifoldFields today | Julia-side status |
 |---|---|---|---|
 | Open MPAS / ICON / SCRIP / Exodus / … | `ux.open_dataset(grid, data)` | manifold-native grids instead (`LatLonGrid`, `CubedSphereGrid`, `ReducedGaussianGrid`, `HEALPixGrid`) | by design |
 | UGRID read / write | `uxgrid.to_xarray(grid_format="ugrid")` | `load_ugrid` / `save_ugrid` / `to_ugrid`, round-trips all four grid types | ✅ shipped |
-| HEALPix | `ux.open_dataset(..., source="healpix")` | `HEALPixGrid(nside, ordering)` | ✅ shipped |
+| HEALPix | `ux.UxDataset.from_healpix(path)` / `ux.Grid.from_healpix(zoom=...)` | `HEALPixGrid(nside, ordering)` | ✅ shipped |
 | Subsetting | `uxds.subset.bounding_box(...)` | — | roadmap |
 | Cross-sections | `uxds.cross_section(...)` | — | roadmap |
 | Zonal / azimuthal means | `da.zonal_mean(...)` / `da.azimuthal_mean(...)` | — | roadmap (conservative ops) |
