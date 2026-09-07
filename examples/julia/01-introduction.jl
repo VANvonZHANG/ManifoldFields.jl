@@ -14,6 +14,13 @@ begin
     # this notebook) instead of Pluto's built-in package manager: it contains
     # unregistered [sources] packages that Pluto cannot resolve on its own.
     Pkg.activate(@__DIR__; io = devnull)
+    # NB: test loadability, not Pkg.project().dependencies — the committed Project.toml
+    # already lists the [deps], so only the Manifest (gitignored) tells fresh clones apart.
+    if isnothing(Base.find_package("ManifoldFields"))
+        # Bootstrap on a fresh clone (Pluto's nbpkg cannot use [sources] on Julia 1.10):
+        Pkg.develop(path = joinpath(@__DIR__, "..", ".."); io = devnull)
+        Pkg.add(url = "https://github.com/VANvonZHANG/ManifoldMeshes.jl"; io = devnull)
+    end
 end
 
 # ╔═╡ 00000000-0000-4000-8000-000000000002

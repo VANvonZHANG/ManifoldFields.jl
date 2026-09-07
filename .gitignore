@@ -21,3 +21,4 @@ examples/julia/*.nc
 examples/julia/Manifest.toml
 examples/python/*.nc
 examples/python/__pycache__/
+examples/python/__marimo__/
