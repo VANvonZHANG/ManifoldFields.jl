@@ -119,3 +119,4 @@ Construct grids from parameters; persist any `FieldSet` as UGRID and read it
 back exactly. Foreign topologies are UXarray's home turf — ManifoldFields
 excels when the sphere grid itself is first-class. Next: **03 · Fields & FieldSet**.
 """
+
