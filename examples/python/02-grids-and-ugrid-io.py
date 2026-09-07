@@ -113,12 +113,11 @@ def _(mo):
     ## The UXarray home turf: MPAS natively
 
     ✦ **Julia side** of this story: `load_ugrid` on the converted UGRID file
-    raises `ArgumentError: UGRID dataset is missing variable Mesh2` —
-    ManifoldFields expects the topology container under its own writer name
-    `Mesh2`, while uxarray names it `grid_topology`; and even past that, an
-    MPAS quadrilateral topology matches none of the four manifold-native grid
-    types (see `DATA.md`). That boundary is exactly where UXarray's generic
-    UGRID model wins.
+    finds uxarray's `grid_topology` container fine — discovery is by
+    `cf_role = "mesh_topology"`, not by name — but then raises: an MPAS
+    quadrilateral topology matches none of the four manifold-native grid types
+    `load_ugrid` can reconstruct (see `DATA.md`). That boundary is exactly
+    where UXarray's generic UGRID model wins.
     """
     )
     return
