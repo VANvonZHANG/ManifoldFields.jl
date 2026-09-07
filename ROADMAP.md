@@ -28,6 +28,8 @@ Registration prerequisites:
 4. Batch interpolation.
 5. Remapping.
 6. Lazy/out-of-core hardening.
+7. Unstructured sphere mesh (gated by a concrete compute-on-foreign-mesh use
+   case).
 
 ## Compatibility Audit
 
@@ -76,10 +78,13 @@ Delivered for own-file round trips and external files with injected meshes:
 - More complete CF/UGRID attributes.
 
 Do not broaden to arbitrary unstructured mesh support until `ManifoldMeshes.jl`
-has a corresponding concrete mesh representation.
+has a corresponding concrete mesh representation (see
+[Unstructured Sphere Mesh](#unstructured-sphere-mesh)).
 
 - Status: multi-variable read/write, dimension orders, topology validation, and
-  CF/UGRID attributes delivered 2026-09.
+  CF/UGRID attributes delivered 2026-09. Topology discovery via `cf_role`
+  (third-party UGRID files reach grid reconstruction; foreign geometries fail
+  with an actionable `mesh =` error) delivered 2026-09 (PR #8).
 
 ## Interpolation
 
@@ -104,6 +109,43 @@ remap(field, dest_mesh; method = :bilinear)
 
 Implementation should reuse existing cell location, interpolation weight, and
 `DiscreteField` machinery.
+
+## Unstructured Sphere Mesh
+
+Add a fifth grid type to `ManifoldMeshes.jl` — tentatively
+`UnstructuredSphereMesh` — that stores an arbitrary spherical mesh as *data*:
+unit-sphere node coordinates, face-node connectivity, and optionally edge
+connectivity. This is the concrete mesh representation that would let
+`ManifoldFields` compute directly on MPAS/ICON-style grids instead of only
+remapping them onto the four parametric grid types.
+
+Scope decision (2026-09-07): the four parametric grid types are generated from
+constructor parameters, which is what makes cell location analytic and
+interpolation cheap. An unstructured type trades that for generality, so it
+should only be built when there is a concrete need to *compute on* (interpolate
+on, differentiate on) a foreign mesh. Ingesting foreign data onto the four
+native grids is the remapping problem above and does not require this type.
+
+Staged plan:
+
+1. Analysis-only: construct from raw node coordinates + connectivity;
+   `num_nodes`/`num_cells`/`cell_nodes`; `DiscreteField`s on the mesh; plotting
+   via `plot_mesh_filled`; reductions. Cell location via a spatial index
+   (k-d tree or ball tree over cell centroids) — O(log n) instead of the
+   analytic O(1) of parametric grids.
+2. Interpolation: `_bilinear_weights` is already generic over the `(s, t)`
+   fractions of a 4-node quad; what is missing is generic local coordinates
+   computed from the found cell's own vertices (project the query point onto
+   the cell plane) rather than from an analytic parametrization.
+3. UGRID IO: topology discovery is already `cf_role`-based (PR #8); a foreign
+   topology could then reconstruct as `UnstructuredSphereMesh` instead of
+   erroring, making `load_ugrid` a general UGRID reader.
+
+This touches both packages — location/interpolation/plotting in
+`ManifoldMeshes.jl`, field construction and IO in `ManifoldFields.jl` — and
+should stay a separate work stream from conservative (overlap-weight)
+remapping: the two solve different problems (computing *on* foreign meshes vs.
+moving data *across* meshes).
 
 ## Lazy and Out-of-Core
 
