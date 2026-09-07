@@ -1,6 +1,6 @@
 # Example data
 
-All datasets ship in one immutable artifact described by `Artifacts.toml`
+All datasets ship in one immutable artifact described by [`Artifacts.toml`](Artifacts.toml)
 (hosted on this repository's GitHub Releases) and are fetched on demand by both
 language tracks — nothing here is bundled with `Pkg.add("ManifoldFields")`.
 

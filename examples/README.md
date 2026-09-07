@@ -23,6 +23,8 @@ See [CAPABILITY_MAP.md](CAPABILITY_MAP.md) for full coverage and
 
 ## Running the notebooks
 
+Run all commands from the repository root (paths below are root-relative).
+
 ### Julia (Pluto)
 
 ```bash
@@ -30,7 +32,7 @@ julia -e 'import Pkg; Pkg.add("Pluto")'
 julia -e 'import Pluto; Pluto.run()'
 ```
 
-Open `examples/julia/01-introduction.jl` (this README's directory). The
+Open `examples/julia/01-introduction.jl` in the Pluto UI. The
 committed `julia/Project.toml` pins the notebook environment: `ManifoldFields`
 resolves to the repository you are in via `[sources]`, `ManifoldMeshes` is
 fetched from its GitHub URL.
@@ -39,8 +41,8 @@ fetched from its GitHub URL.
 
 ```bash
 python -m venv .venv && source .venv/bin/activate
-pip install -r python/requirements.txt
-marimo edit python/01-introduction.py
+pip install -r examples/python/requirements.txt
+marimo edit examples/python/01-introduction.py
 ```
 
 ### Data

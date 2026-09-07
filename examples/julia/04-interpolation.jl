@@ -99,6 +99,6 @@ ManifoldMeshes.
 | `interpolate(f, lat, lon)` — interpolated value | ball-tree nearest cell (`get_ball_tree()`) |
 | point queries today; batched queries roadmap | grid-to-grid via `remap.nearest_neighbor` / `.bilinear` |
 
-The full UXarray ↔ ManifoldFields picture: [`CAPABILITY_MAP.md`](CAPABILITY_MAP.md).
+The full UXarray ↔ ManifoldFields picture: [`CAPABILITY_MAP.md`](../CAPABILITY_MAP.md).
 """
 
