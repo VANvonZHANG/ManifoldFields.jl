@@ -43,6 +43,16 @@ releases.
 
 ### Fixed
 
+- `from_ugrid`/`load_ugrid` now discover the UGRID topology container via
+  `cf_role = "mesh_topology"` instead of requiring the variable name `Mesh2`,
+  resolve node coordinates and face-node connectivity through the container's
+  own attributes, exclude coordinate/connectivity variables from data-variable
+  discovery, and infer a data variable's location from its dimensions when the
+  `location` attribute is absent. Third-party UGRID files (e.g. written by
+  UXarray, which names the container `grid_topology`) now reach grid
+  reconstruction; foreign geometries fail there with an actionable error
+  pointing at `mesh =`, and UXarray round-trips of ManifoldFields-written files
+  load natively (topology metadata survives the round trip).
 - `Base.cat` on `FieldSet`s now validates mesh identity (`===`) before
   concatenating.
 
