@@ -33,6 +33,8 @@ releases.
   coordinates).
 - `keepdims` keyword for `FieldSet` reductions (retain length-1 reduced dims).
 - `from_ugrid` reads UGRID global attributes back into FieldSet-level metadata.
+- Add `examples/` — a paired Pluto/marimo tutorial for UXarray users, with a
+  release-hosted example-data artifact (nothing bundled with `Pkg.add`).
 
 ### Changed
 

@@ -12,3 +12,14 @@ lcov.info
 
 # Documentation build output
 docs/build/
+
+# Tutorial example data (fetched on demand from the GitHub Release artifact)
+examples/data/
+examples/example-data.tar.gz
+examples/julia/*.html
+examples/julia/*.nc
+examples/julia/Manifest.toml
+examples/python/*.nc
+examples/python/__pycache__/
+examples/python/__marimo__/
+.venv/

@@ -1,0 +1,4 @@
+marimo>=0.9
+uxarray>=2026.7
+matplotlib>=3.8
+h5netcdf>=1.3
