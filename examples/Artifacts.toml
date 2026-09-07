@@ -1,0 +1,7 @@
+[example-data]
+git-tree-sha1 = "ee2122b3f4f518ed51c902da42c8ce61fc1dbdca"
+lazy = true
+
+    [[example-data.download]]
+    sha256 = "3bdb799fff6d7b36d9e69a04543232339bfefde2c17dc00fc053554c16a3a13b"
+    url = "https://github.com/VANvonZHANG/ManifoldFields.jl/releases/download/example-data-v1/example-data.tar.gz"
