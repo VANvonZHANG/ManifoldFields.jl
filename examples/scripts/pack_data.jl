@@ -39,7 +39,10 @@ hash = Pkg.create_artifact() do dir
 end
 
 adir = Pkg.artifact_path(hash)
-run(`tar -czf $TARBALL -C $(dirname(adir)) $(basename(adir))`)
+# Flat layout: Julia 1.10's artifact unpacker does NOT strip a top-level
+# directory, so files must sit at the archive root for the unpacked tree
+# hash to match the manifest's git-tree-sha1.
+run(`tar -czf $TARBALL -C $adir $FILES`)
 sha = bytes2hex(open(SHA.sha256, TARBALL))
 Pkg.Artifacts.bind_artifact!(TOML, "example-data", hash;
                              download_info = [(URL, sha)], lazy = true, force = true)
