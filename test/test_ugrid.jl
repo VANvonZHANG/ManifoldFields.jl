@@ -2,6 +2,7 @@ using DimensionalData
 using LinearAlgebra
 using ManifoldFields
 using ManifoldMeshes
+using NCDatasets
 using StaticArrays
 using Test
 
@@ -242,7 +243,10 @@ end
     @test Set(field_names(loaded_multi)) == Set([:node_temp, :other_node_temp])
 
     missing_location_ds = to_ugrid(f)
-    delete!(missing_location_ds.variables["node_temp"].attrs, "location")
+    ml_var = missing_location_ds.variables["node_temp"]
+    delete!(ml_var.attrs, "location")
+    missing_location_ds.variables["node_temp"] = ManifoldFields.UGridVariable(
+        ml_var.data, ("n_time",), ml_var.attrs)
     @test_throws ArgumentError from_ugrid(missing_location_ds)
 
     unsupported_location_ds = to_ugrid(f)
@@ -506,6 +510,147 @@ end
     @test typeof(mesh(loaded)) == typeof(g)
     @test mesh(loaded).rotation == rot
     @test data(loaded[:psi]) == data(f)
+end
+
+@testset "UGRID third-party topology discovery" begin
+    g = small_grid()
+    f = DiscreteField(NodeLoc, g, node_values(g), node_dims(g); name = :node_temp)
+
+    # Rename a Julia-written dataset to UXarray conventions: container `grid_topology`,
+    # coordinates `node_lon`/`node_lat`, 0-based `face_node_connectivity`.
+    # node_coordinates deliberately lists latitude first to pin standard_name-based
+    # lon/lat ordering.
+    function uxarray_style(ds)
+        out = UGridDataset(Dict{String, ManifoldFields.UGridVariable}(), copy(ds.attributes))
+        for (name, var) in ds.variables
+            newname = name == "Mesh2" ? "grid_topology" :
+                      name == "Mesh2_node_lon" ? "node_lon" :
+                      name == "Mesh2_node_lat" ? "node_lat" :
+                      name == "Mesh2_face_nodes" ? "face_node_connectivity" : name
+            newattrs = Dict{String, Any}(k => v for (k, v) in var.attrs)
+            if newname == "grid_topology"
+                newattrs["node_coordinates"] = "node_lat node_lon"
+                newattrs["face_node_connectivity"] = "face_node_connectivity"
+            elseif newname == "face_node_connectivity"
+                newattrs["start_index"] = 0
+            elseif haskey(newattrs, "mesh")
+                newattrs["mesh"] = "grid_topology"
+            end
+            newdata = newname == "face_node_connectivity" ? var.data .- 1 : var.data
+            out.variables[newname] = ManifoldFields.UGridVariable(newdata, var.dims, newattrs)
+        end
+        return out
+    end
+
+    # renamed container round-trips (reconstruction metadata preserved)
+    ds = uxarray_style(to_ugrid(f))
+    loaded = from_ugrid(ds)
+    @test loaded isa FieldSet
+    @test typeof(mesh(loaded)) == typeof(g)
+    @test data(loaded[:node_temp]) == node_values(g)
+
+    # foreign boundary: no manifoldfields_* metadata -> actionable error; mesh= rescues
+    ext = uxarray_style(to_ugrid(f))
+    ma = ext.variables["grid_topology"].attrs
+    for k in collect(keys(ma))
+        startswith(k, "manifoldfields_") && delete!(ma, k)
+    end
+    @test_throws ArgumentError from_ugrid_mesh(ext)
+    @test_throws ArgumentError from_ugrid(ext)
+    @test from_ugrid_mesh(ext; mesh = g) === g
+    fs = from_ugrid(ext; mesh = g)
+    @test fs isa FieldSet
+    @test data(fs[:node_temp]) == node_values(g)
+
+    # multiple containers: the Mesh2 one (with data + metadata) is preferred
+    dual = to_ugrid(f)
+    dual.variables["grid_topology"] = ManifoldFields.UGridVariable(0,
+        (),
+        Dict{String, Any}(
+            "cf_role" => "mesh_topology",
+            "topology_dimension" => 2,
+            "node_coordinates" => "node_lon node_lat",
+            "face_node_connectivity" => "face_node_connectivity",
+            "face_dimension" => "n_face"
+        ))
+    loaded_dual = from_ugrid(dual)
+    @test data(loaded_dual[:node_temp]) == node_values(g)
+
+    # ambiguity: two containers, neither named Mesh2
+    amb = uxarray_style(to_ugrid(f))
+    amb.variables["other_topology"] = ManifoldFields.UGridVariable(
+        0, (), copy(amb.variables["grid_topology"].attrs))
+    @test_throws ArgumentError from_ugrid(amb)
+
+    # location inference from dimensions when the location attr is absent
+    no_loc = uxarray_style(to_ugrid(f))
+    delete!(no_loc.variables["node_temp"].attrs, "location")
+    @test from_ugrid(no_loc)[:node_temp] isa DiscreteField{NodeLoc}
+
+    cf = DiscreteField(CellLoc, g, cell_values(g), cell_dims(g); name = :cell_area)
+    no_loc_face = uxarray_style(to_ugrid(cf))
+    delete!(no_loc_face.variables["cell_area"].attrs, "location")
+    @test from_ugrid(no_loc_face)[:cell_area] isa DiscreteField{CellLoc}
+
+    # location attr absent and dims identify no location -> error
+    bad = uxarray_style(to_ugrid(f))
+    bad_var = bad.variables["node_temp"]
+    delete!(bad_var.attrs, "location")
+    bad.variables["node_temp"] = ManifoldFields.UGridVariable(
+        bad_var.data, ("n_time",), bad_var.attrs)
+    @test_throws ArgumentError from_ugrid(bad)
+
+    # UXarray tags coordinate variables with mesh=<container>; they must not load as fields
+    tagged = to_ugrid(f)
+    tagged.variables["Mesh2_node_lon"].attrs["mesh"] = "Mesh2"
+    @test field_names(from_ugrid(tagged)) == (:node_temp,)
+
+    # NetCDF-level: hand-written foreign-style file loads through load_ugrid
+    g8 = small_grid()
+    path = tempname() * ".nc"
+    NCDatasets.NCDataset(path, "c") do nc
+        nc.attrib["Conventions"] = "CF-1.11 UGRID-1.0"
+        NCDatasets.defDim(nc, "n_node", num_nodes(g8))
+        NCDatasets.defDim(nc, "n_face", num_cells(g8))
+        NCDatasets.defDim(nc, "n_max_face_nodes", 4)
+        lonvar = NCDatasets.defVar(nc, "node_lon", Float64, ("n_node",))
+        lonvar.attrib["standard_name"] = "longitude"
+        lonvar[:] = [ManifoldFields._lonlat(node_coordinates(g8, n))[1]
+                     for n in 1:num_nodes(g8)]
+        latvar = NCDatasets.defVar(nc, "node_lat", Float64, ("n_node",))
+        latvar.attrib["standard_name"] = "latitude"
+        latvar[:] = [ManifoldFields._lonlat(node_coordinates(g8, n))[2]
+                     for n in 1:num_nodes(g8)]
+        conn = Matrix{Int64}(undef, num_cells(g8), 4)
+        for c in 1:num_cells(g8)
+            conn[c, :] .= collect(Int64, cell_nodes(g8, c)) .- 1
+        end
+        fnvar = NCDatasets.defVar(nc, "face_node_connectivity", Int64,
+            ("n_face", "n_max_face_nodes"))
+        fnvar.attrib["cf_role"] = "face_node_connectivity"
+        fnvar.attrib["start_index"] = 0
+        fnvar[:] = conn
+        topo = NCDatasets.defVar(nc, "grid_topology", Int64, ())
+        topo.attrib["cf_role"] = "mesh_topology"
+        topo.attrib["topology_dimension"] = 2
+        topo.attrib["node_coordinates"] = "node_lon node_lat"
+        topo.attrib["face_node_connectivity"] = "face_node_connectivity"
+        topo.attrib["face_dimension"] = "n_face"
+        topo.attrib["node_dimension"] = "n_node"
+        topo.attrib["manifoldfields_grid_type"] = "LatLonGrid"
+        topo.attrib["manifoldfields_lat_edges"] = g8.lat_edges
+        topo.attrib["manifoldfields_lon_edges"] = g8.lon_edges
+        topo.attrib["manifoldfields_radius"] = g8.R
+        depth = NCDatasets.defVar(nc, "depth", Float64, ("n_face",))
+        depth.attrib["mesh"] = "grid_topology"
+        depth[:] = cell_values(g8)
+    end
+    loaded8 = load_ugrid(path)
+    @test loaded8 isa FieldSet
+    @test typeof(mesh(loaded8)) == typeof(g8)
+    @test loaded8[:depth] isa DiscreteField{CellLoc}  # location inferred from n_face
+    @test data(loaded8[:depth]) == cell_values(g8)
+    rm(path)
 end
 
 @testset "UGRID FieldSet global-attribute read-back" begin

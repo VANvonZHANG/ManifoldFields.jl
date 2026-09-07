@@ -18,7 +18,9 @@ themselves carry no units attribute — the script supplies the unit.)
 
 ## Interop measurements
 
-Environment: uxarray 2026.7.0 × ManifoldFields 0.1.0 (measured on 2026-09-06).
+Environment: uxarray 2026.7.0 × ManifoldFields 0.1.0 (measured on 2026-09-06; the
+2026-09-07 reverse-direction re-measurements use the repo checkout with the
+`cf_role` topology-discovery fix, unreleased at measurement time).
 
 **Julia writes → UXarray reads** (`healpix_analytic.nc`): works: open OK, 12288 cells,
 value ranges agree to <1e-6 — UXarray reads `psi` ∈ [-1.136151774866946, 1.1361517343765501],
@@ -27,25 +29,34 @@ note: the open prints two harmless "coordinates are not regularly spaced" messag
 uxarray 2026.7.0 exposes the face count as the integer `uxds.uxgrid.n_face` — the older
 `nMesh2_face` accessor no longer exists.
 
-**UXarray writes → Julia reads** (`oQU480.ugrid.nc`): expected and observed: `load_ugrid`
-raises
+**UXarray writes → Julia reads** (`oQU480.ugrid.nc`): the container-name boundary is
+**fixed** (2026-09-07, unreleased): `load_ugrid` now discovers the topology container
+via `cf_role = "mesh_topology"` and resolves coordinates/connectivity through the
+container's attributes, so uxarray's `grid_topology` naming is read like any other.
+What remains is the *real* boundary — an arbitrary MPAS quad topology carries no
+manifold-native grid metadata, so `load_ugrid` raises
 
 ```
-ArgumentError: UGRID dataset is missing variable Mesh2
+ArgumentError: cannot reconstruct a ManifoldMeshes grid from topology 'grid_topology': it carries no manifoldfields_* grid metadata (foreign UGRID file, e.g. written by UXarray); pass mesh= explicitly if the geometry matches one of the four grid types
 ```
 
-`bottomDepth` carries its `mesh` pointer (to `grid_topology`), so variable discovery
-now succeeds and the load proceeds to grid reconstruction, where it fails because
-ManifoldFields looks up the topology container under its own writer name `Mesh2`
-(`_require_var(ds, "Mesh2")` in `src/ugrid.jl`) rather than discovering it via
-`cf_role = "mesh_topology"`; uxarray names the container `grid_topology`.
-(An earlier measurement of this file failed one stage earlier —
-`ArgumentError: UGRID dataset has no data variables (variables with a mesh attribute)`
-— because our conversion script then stripped all data-var attributes; that was our
-bug, fixed in `scripts/prepare_ugrid.py`, not an uxarray limitation.) Rationale:
 ManifoldFields reconstructs one of its four grid types from own-file UGRID metadata;
 an arbitrary MPAS quad topology matches none of them. `load_ugrid(path; mesh = m)`
 exists for foreign files whose geometry *does* match a ManifoldMeshes grid.
+(An earlier measurement of this file failed one stage earlier —
+`ArgumentError: UGRID dataset has no data variables (variables with a mesh attribute)`
+— because our conversion script then stripped all data-var attributes; that was our
+bug, fixed in `scripts/prepare_ugrid.py`, not an uxarray limitation. A second, now
+also-fixed stage looked the container up under the hard-coded name `Mesh2`.)
+
+**UXarray round-trip of a Julia-written file** (`cubedsphere_copy.nc`, written by the
+ch02 Python notebook via `uxds.uxgrid.to_xarray()` + data-var merge): loads natively
+with `load_ugrid` (measured 2026-09-07) — uxarray preserves the original `Mesh2`
+container together with its `manifoldfields_*` reconstruction attributes alongside
+its canonical `grid_topology` container, and discovery prefers `Mesh2` when a file
+carries multiple `cf_role = "mesh_topology"` containers. `psi` comes back on a
+reconstructed `CubedSphereGrid(n = 24)` bit-identical to
+`cubedsphere_analytic.nc` (max |diff| = 0.0 over all 3456 cells).
 
 **HEALPix ordering** (`psi_healpix.nc`): cell order matches `HEALPixGrid(nside = 32, ordering = :nested)`.
 UXarray 2026.7.0 has no `open_dataset(source = "healpix", nside = ...)` — the `source` kwarg itself

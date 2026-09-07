@@ -234,8 +234,74 @@ function _add_location_coordinates!(ds::UGridDataset, mesh, ::Type{EdgeLoc})
     return nothing
 end
 
-function _find_data_vars(ds::UGridDataset)
-    return [name for (name, var) in ds.variables if haskey(var.attrs, "mesh")]
+function _topology_candidates(ds::UGridDataset)
+    return [name
+            for (name, var) in ds.variables
+            if get(var.attrs, "cf_role", "") == "mesh_topology"]
+end
+
+function _discover_topology(ds::UGridDataset)
+    candidates = _topology_candidates(ds)
+    isempty(candidates) && throw(ArgumentError(
+        "UGRID dataset has no mesh topology container (cf_role=mesh_topology)"))
+    length(candidates) == 1 && return candidates[1]
+    "Mesh2" in candidates && return "Mesh2"
+    sort!(candidates)
+    throw(ArgumentError(
+        "UGRID dataset has multiple mesh topology containers ($(join(candidates, ", "))); " *
+        "ManifoldFields reads datasets with a single topology or one named Mesh2"))
+end
+
+function _node_coordinate_vars(ds::UGridDataset, meshvar::UGridVariable)
+    names = String.(split(String(_require_attr(meshvar, "node_coordinates"))))
+    length(names) == 2 || throw(ArgumentError(
+        "UGRID node_coordinates must name exactly two variables, got '$(join(names, " "))'"))
+    v1, v2 = _require_var(ds, names[1]), _require_var(ds, names[2])
+    function is_lat(v, name)
+        sn = get(v.attrs, "standard_name", "")
+        return sn == "latitude" ||
+               (sn != "longitude" && occursin("lat", lowercase(name)))
+    end
+    lat1, lat2 = is_lat(v1, names[1]), is_lat(v2, names[2])
+    lat1 == lat2 && throw(ArgumentError(
+        "cannot order node_coordinates '$(names[1]) $(names[2])' as longitude/latitude"))
+    return lat2 ? (v1, v2) : (v2, v1)
+end
+
+function _topology_variables(ds::UGridDataset)
+    name = _discover_topology(ds)
+    meshvar = ds.variables[name]
+    node_lon, node_lat = _node_coordinate_vars(ds, meshvar)
+    face_nodes = _require_var(ds, String(_require_attr(meshvar, "face_node_connectivity")))
+    return (name = name, meshvar = meshvar, node_lon = node_lon, node_lat = node_lat,
+        face_nodes = face_nodes)
+end
+
+function _topology_aux_names(meshvar::UGridVariable, topology_name::String)
+    aux = Set{String}([topology_name])
+    for (k, v) in meshvar.attrs
+        (endswith(k, "_coordinates") || endswith(k, "_connectivity")) || continue
+        for tok in split(String(v))
+            push!(aux, String(tok))
+        end
+    end
+    return aux
+end
+
+function _find_data_vars(ds::UGridDataset, topology_name::String, aux)
+    return sort!([name
+                  for (name, var) in ds.variables
+                  if get(var.attrs, "mesh", "") == topology_name && !(name in aux) &&
+                         !haskey(var.attrs, "cf_role")])
+end
+
+function _infer_location(var::UGridVariable, meshvar::UGridVariable)
+    loc_dim(attr, default) = String(get(meshvar.attrs, attr, default))
+    loc_dim("node_dimension", "n_node") in var.dims && return NodeLoc
+    loc_dim("edge_dimension", "n_edge") in var.dims && return EdgeLoc
+    loc_dim("face_dimension", "n_face") in var.dims && return CellLoc
+    throw(ArgumentError(
+        "UGRID data variable $(var.dims) has no location attribute and its dimensions do not identify node/edge/face"))
 end
 
 function _require_var(ds::UGridDataset, name::String)
@@ -308,18 +374,17 @@ function _metadata_rotation(attrs)
 end
 
 function _validate_topology!(m, ds::UGridDataset)
-    node_lon = _require_var(ds, "Mesh2_node_lon")
-    face_nodes = _require_var(ds, "Mesh2_face_nodes")
-    n_node = length(node_lon.data)
-    n_face = size(face_nodes.data, 1)
+    topo = _topology_variables(ds)
+    n_node = length(topo.node_lon.data)
+    n_face = size(topo.face_nodes.data, 1)
     num_nodes(m) == n_node || throw(ArgumentError(
         "mesh node count $(num_nodes(m)) != UGRID node count $n_node"))
     num_cells(m) == n_face || throw(ArgumentError(
         "mesh cell count $(num_cells(m)) != UGRID face count $n_face"))
-    start_index = Int(get(face_nodes.attrs, "start_index", 0))
+    start_index = Int(get(topo.face_nodes.attrs, "start_index", 0))
     for c in 1:num_cells(m)
         expected = collect(Int, cell_nodes(m, c))
-        actual = Int.(collect(face_nodes.data[c, :])) .+ (1 - start_index)
+        actual = Int.(collect(topo.face_nodes.data[c, :])) .+ (1 - start_index)
         actual == expected || throw(ArgumentError(
             "UGRID face_node_connectivity row $c does not match mesh connectivity (start_index-normalized)"))
     end
@@ -327,14 +392,13 @@ function _validate_topology!(m, ds::UGridDataset)
 end
 
 function _validate_node_coordinates!(m, ds::UGridDataset; atol = 1e-8)
-    lon_var = _require_var(ds, "Mesh2_node_lon")
-    lat_var = _require_var(ds, "Mesh2_node_lat")
+    topo = _topology_variables(ds)
     for n in 1:num_nodes(m)
         lon, lat = _lonlat(node_coordinates(m, n))
-        abs(mod(lon - lon_var.data[n] + 180.0, 360.0) - 180.0) <= atol ||
+        abs(mod(lon - topo.node_lon.data[n] + 180.0, 360.0) - 180.0) <= atol ||
             throw(ArgumentError(
                 "reconstructed mesh node $n longitude does not match the UGRID file; the file describes a different geometry — pass mesh= explicitly"))
-        abs(lat - lat_var.data[n]) <= atol ||
+        abs(lat - topo.node_lat.data[n]) <= atol ||
             throw(ArgumentError(
                 "reconstructed mesh node $n latitude does not match the UGRID file; the file describes a different geometry — pass mesh= explicitly"))
     end
@@ -342,25 +406,21 @@ function _validate_node_coordinates!(m, ds::UGridDataset; atol = 1e-8)
 end
 
 function from_ugrid_mesh(ds::UGridDataset; grid_type = nothing, mesh = nothing)
-    meshvar = _require_var(ds, "Mesh2")
-    _require_attr(meshvar, "cf_role") == "mesh_topology" ||
-        throw(ArgumentError("Mesh2 is missing cf_role=mesh_topology"))
+    topo = _topology_variables(ds)
+    meshvar = topo.meshvar
     _require_attr(meshvar, "topology_dimension") == 2 ||
-        throw(ArgumentError("Mesh2 must have topology_dimension=2"))
-    _require_attr(meshvar, "node_coordinates")
-    _require_attr(meshvar, "face_node_connectivity")
+        throw(ArgumentError("mesh topology $(topo.name) must have topology_dimension=2"))
     _require_attr(meshvar, "face_dimension")
-    _require_var(ds, "Mesh2_node_lon")
-    _require_var(ds, "Mesh2_node_lat")
-    _require_var(ds, "Mesh2_face_nodes")
 
     if mesh !== nothing
         return _validate_topology!(mesh, ds)
     end
 
     attrs = meshvar.attrs
-    metadata_grid_type = _require_attr(meshvar, "manifoldfields_grid_type")
-    requested_grid_type = grid_type === nothing ? metadata_grid_type : grid_type
+    haskey(attrs, "manifoldfields_grid_type") || throw(ArgumentError(
+        "cannot reconstruct a ManifoldMeshes grid from topology '$(topo.name)': it carries no manifoldfields_* grid metadata (foreign UGRID file, e.g. written by UXarray); pass mesh= explicitly if the geometry matches one of the four grid types"))
+    requested_grid_type = grid_type === nothing ? attrs["manifoldfields_grid_type"] :
+                          grid_type
     if requested_grid_type == "LatLonGrid"
         lat_edges = _metadata_vector(attrs, "manifoldfields_lat_edges")
         lon_edges = _metadata_vector(attrs, "manifoldfields_lon_edges")
@@ -392,16 +452,18 @@ function from_ugrid_mesh(ds::UGridDataset; grid_type = nothing, mesh = nothing)
 end
 
 function from_ugrid(ds::UGridDataset; grid_type = nothing, mesh = nothing)
-    data_vars = sort!(_find_data_vars(ds))
+    topology_name = _discover_topology(ds)
+    meshvar = ds.variables[topology_name]
+    data_vars = _find_data_vars(ds, topology_name, _topology_aux_names(meshvar, topology_name))
     isempty(data_vars) && throw(ArgumentError(
-        "UGRID dataset has no data variables (variables with a mesh attribute)"))
+        "UGRID dataset has no data variables (variables with a mesh attribute referencing topology '$topology_name')"))
     m = mesh === nothing ? from_ugrid_mesh(ds; grid_type = grid_type) :
         _validate_topology!(mesh, ds)
     fields_nt = NamedTuple{Tuple(Symbol.(data_vars))}(map(data_vars) do varname
         var = ds.variables[varname]
-        _require_attr(var, "mesh") == "Mesh2" || throw(ArgumentError(
-            "UGRID data variable $varname references unsupported mesh"))
-        Loc = _loc_from_ugrid(_require_attr(var, "location"))
+        Loc = haskey(var.attrs, "location") ?
+              _loc_from_ugrid(_require_attr(var, "location")) :
+              _infer_location(var, meshvar)
         return DiscreteField(Loc, m, var.data, _dims_from_ugrid(var, Loc);
             name = Symbol(varname), metadata = var.attrs)
     end)
