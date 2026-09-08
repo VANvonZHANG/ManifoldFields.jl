@@ -11,6 +11,7 @@ import ManifoldMeshes:
                        NodeLoc,
                        ProjectionStyle,
                        ReducedGaussianGrid,
+                       UnstructuredMesh,
                        cell_centroid,
                        cell_nodes,
                        edge_nodes,
@@ -69,14 +70,24 @@ function to_ugrid(mesh)
         Dict{String, Any}("standard_name" => "latitude", "units" => "degrees_north")
     )
 
-    face_nodes = Matrix{Int}(undef, num_cells(mesh), 4)
+    ks = [length(cell_nodes(mesh, c)) for c in 1:num_cells(mesh)]
+    max_k = maximum(ks)
+    fill_value = -1
+    face_nodes = fill(fill_value, num_cells(mesh), max_k)
     for c in 1:num_cells(mesh)
-        face_nodes[c, :] .= cell_nodes(mesh, c)
+        face_nodes[c, 1:ks[c]] .= collect(cell_nodes(mesh, c))
+    end
+    fn_attrs = Dict{String, Any}(
+        "cf_role" => "face_node_connectivity",
+        "start_index" => 1
+    )
+    if !all(ks .== max_k)
+        fn_attrs["_FillValue"] = fill_value
     end
     variables["Mesh2_face_nodes"] = UGridVariable(
         face_nodes,
         ("n_face", "n_max_face_nodes"),
-        Dict{String, Any}("cf_role" => "face_node_connectivity", "start_index" => 1)
+        fn_attrs
     )
 
     return UGridDataset(
@@ -119,6 +130,12 @@ function _add_own_file_mesh_metadata!(attrs, mesh::HEALPixGrid)
     attrs["manifoldfields_nside"] = mesh.nside
     attrs["manifoldfields_ordering"] = String(mesh.ordering)
     attrs["manifoldfields_rotation"] = collect(vec(mesh.rotation))
+    attrs["manifoldfields_radius"] = mesh.R
+    return attrs
+end
+
+function _add_own_file_mesh_metadata!(attrs, mesh::UnstructuredMesh)
+    attrs["manifoldfields_grid_type"] = "UnstructuredMesh"
     attrs["manifoldfields_radius"] = mesh.R
     return attrs
 end
@@ -382,9 +399,13 @@ function _validate_topology!(m, ds::UGridDataset)
     num_cells(m) == n_face || throw(ArgumentError(
         "mesh cell count $(num_cells(m)) != UGRID face count $n_face"))
     start_index = Int(get(topo.face_nodes.attrs, "start_index", 0))
+    fillv = haskey(topo.face_nodes.attrs, "_FillValue") ?
+            Int(topo.face_nodes.attrs["_FillValue"]) : nothing
     for c in 1:num_cells(m)
         expected = collect(Int, cell_nodes(m, c))
-        actual = Int.(collect(topo.face_nodes.data[c, :])) .+ (1 - start_index)
+        row = Int.(collect(topo.face_nodes.data[c, :]))
+        active = fillv === nothing ? row : row[row .!= fillv]
+        actual = active .+ (1 - start_index)
         actual == expected || throw(ArgumentError(
             "UGRID face_node_connectivity row $c does not match mesh connectivity (start_index-normalized)"))
     end
@@ -403,6 +424,27 @@ function _validate_node_coordinates!(m, ds::UGridDataset; atol = 1e-8)
                 "reconstructed mesh node $n latitude does not match the UGRID file; the file describes a different geometry — pass mesh= explicitly"))
     end
     return m
+end
+
+function _unstructured_from_topology(topo, attrs)
+    fn = topo.face_nodes
+    fillv = haskey(fn.attrs, "_FillValue") ? Int(fn.attrs["_FillValue"]) : nothing
+    ks = [fillv === nothing ? size(fn.data, 2) :
+          count(!=(fillv), Int.(fn.data[c, :])) for c in 1:size(fn.data, 1)]
+    all(3 .<= ks) || throw(ArgumentError(
+        "face_node_connectivity of topology '$(topo.name)' has cells with fewer than 3 nodes"))
+    start_index = Int(get(fn.attrs, "start_index", 0))
+    conn = Matrix{Int}(fn.data)
+    for c in 1:size(conn, 1)
+        for k in 1:ks[c]
+            conn[c, k] += (1 - start_index)
+        end
+    end
+    R = haskey(attrs, "manifoldfields_radius") ?
+        Float64(attrs["manifoldfields_radius"]) : 1.0
+    return UnstructuredMesh(collect(Float64, topo.node_lon.data),
+        collect(Float64, topo.node_lat.data), conn; R = R, start_index = 1,
+        fill_value = fillv === nothing ? -1 : fillv)
 end
 
 function from_ugrid_mesh(ds::UGridDataset; grid_type = nothing, mesh = nothing)
@@ -446,6 +488,9 @@ function from_ugrid_mesh(ds::UGridDataset; grid_type = nothing, mesh = nothing)
         radius = _metadata_float(attrs, "manifoldfields_radius")
         mesh = HEALPixGrid(nside = nside, ordering = ordering, rotation = rotation; R = radius)
         return _validate_node_coordinates!(_validate_topology!(mesh, ds), ds)
+    elseif requested_grid_type == "UnstructuredMesh"
+        m = _unstructured_from_topology(topo, attrs)
+        return _validate_node_coordinates!(m, ds)
     end
 
     throw(ArgumentError("cannot reconstruct mesh without supported ManifoldFields mesh metadata"))
@@ -516,13 +561,24 @@ function _write_attrs!(ncvar, attrs)
 end
 
 function _write_one_variable!(nc, name::String, var::UGridVariable)
-    ncvar = NCDatasets.defVar(nc, name, _nc_type(var), var.dims)
+    T = _nc_type(var)
+    ncvar = NCDatasets.defVar(nc, name, T, var.dims)
+    # NetCDF requires _FillValue to be defined before any data is written
+    # (error -122) and with the variable's on-disk type (error -45). All
+    # other attributes are written after the data, preserving the on-disk
+    # layout of fill-free files byte-for-byte.
+    attrs = var.attrs
+    if haskey(attrs, "_FillValue")
+        ncvar.attrib["_FillValue"] = T(attrs["_FillValue"])
+        attrs = copy(attrs)
+        delete!(attrs, "_FillValue")
+    end
     if var.dims == ()
         ncvar[] = var.data
     else
         ncvar[:] = var.data
     end
-    _write_attrs!(ncvar, var.attrs)
+    _write_attrs!(ncvar, attrs)
     return nc
 end
 
@@ -560,7 +616,10 @@ function _read_ugrid_dataset(path::AbstractString)
             attrs[String(k)] = v
         end
         for name in keys(nc)
-            v = nc[name]
+            # raw variable: _FillValue entries stay as their on-disk value
+            # instead of being masked to `missing` by the CF layer, so the
+            # fill-aware topology readers see the fill value itself
+            v = NCDatasets.variable(nc, String(name))
             vars[String(name)] = UGridVariable(
                 _read_var_data(v),
                 Tuple(String.(NCDatasets.dimnames(v))),

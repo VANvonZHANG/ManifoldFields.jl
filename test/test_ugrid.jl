@@ -669,3 +669,84 @@ end
     plain = from_ugrid(to_ugrid(FieldSet(g, :u => u, :v => v)))
     @test DimensionalData.metadata(plain) isa DimensionalData.NoMetadata
 end
+
+@testset "UGRID UnstructuredMesh round-trip" begin
+    g = LatLonGrid(lat_edges = collect(range(-90.0, 90.0; length = 5)),
+        lon_edges = collect(range(0.0, 360.0; length = 9)))
+    fn = Matrix{Int}(undef, num_cells(g), 4)
+    for c in 1:num_cells(g)
+        fn[c, :] .= collect(cell_nodes(g, c))
+    end
+    node_lon = Vector{Float64}(undef, num_nodes(g))
+    node_lat = Vector{Float64}(undef, num_nodes(g))
+    for n in 1:num_nodes(g)
+        lon, lat = ManifoldFields._lonlat(node_coordinates(g, n))
+        node_lon[n] = lon
+        node_lat[n] = lat
+    end
+    m = UnstructuredMesh(node_lon, node_lat, fn; R = g.R, start_index = 1)
+
+    f = DiscreteField(CellLoc, m, cell_values(g), cell_dims(g); name = :cell_area)
+    ds = to_ugrid(f)
+    @test ds.variables["Mesh2"].attrs["manifoldfields_grid_type"] == "UnstructuredMesh"
+    @test ds.variables["Mesh2"].attrs["manifoldfields_radius"] == m.R
+    # all-quad mesh: no fill needed, output shape identical to parametric grids
+    @test size(ds.variables["Mesh2_face_nodes"].data) == (num_cells(m), 4)
+    @test !haskey(ds.variables["Mesh2_face_nodes"].attrs, "_FillValue")
+
+    path = tempname() * ".nc"
+    save_ugrid(f, path)
+    loaded = load_ugrid(path)
+    @test loaded isa FieldSet
+    @test mesh(loaded) isa UnstructuredMesh
+    @test num_cells(mesh(loaded)) == num_cells(m)
+    @test num_nodes(mesh(loaded)) == num_nodes(m)
+    @test collect(cell_nodes(mesh(loaded), 3)) == collect(cell_nodes(m, 3))
+    @test data(loaded[:cell_area]) == data(f)
+
+    # EdgeLoc round-trip relies on deterministic edge numbering (scan order).
+    # Data comes from m, not g: the derived mesh has nlat extra seam edges
+    # (2 for this grid), so lengths differ from LatLonGrid's.
+    ef = DiscreteField(EdgeLoc, m, edge_values(m), edge_dims(m); name = :edge_flux)
+    epath = tempname() * ".nc"
+    save_ugrid(ef, epath)
+    eloaded = load_ugrid(epath)
+    @test eloaded[:edge_flux] isa DiscreteField{EdgeLoc}
+    @test data(eloaded[:edge_flux]) == data(ef)
+
+    # mixed mesh: triangulated +x face, padded with fill; _FillValue written,
+    # round-trip preserves arity and per-cell node lists
+    cube_xyz = [(1, 1, 1), (1, 1, -1), (1, -1, -1), (1, -1, 1),
+        (-1, 1, 1), (-1, 1, -1), (-1, -1, -1), (-1, -1, 1)]
+    cube_lon = Vector{Float64}(undef, 8)
+    cube_lat = Vector{Float64}(undef, 8)
+    for n in 1:8
+        lat,
+        lon = ManifoldMeshes._cartesian_to_latlon(
+            SVector{3, Float64}(cube_xyz[n]) ./ sqrt(3))
+        cube_lon[n] = lon
+        cube_lat[n] = lat
+    end
+    cube_split = [1 4 3 -1; 1 3 2 -1; 5 6 7 8; 1 2 6 5; 4 3 7 8; 1 4 8 5; 2 3 7 6]
+    mm = UnstructuredMesh(cube_lon, cube_lat, cube_split; start_index = 1,
+        fill_value = -1)
+    mf = DiscreteField(CellLoc, mm, collect(Float64, 1:num_cells(mm)),
+        cell_dims(mm); name = :val)
+    mds = to_ugrid(mf)
+    fvar = mds.variables["Mesh2_face_nodes"]
+    @test size(fvar.data) == (7, 4)
+    @test fvar.attrs["_FillValue"] == -1
+    @test fvar.data[1, :] == [1, 4, 3, -1]
+    mpath = tempname() * ".nc"
+    save_ugrid(mf, mpath)
+    mloaded = load_ugrid(mpath)
+    @test mesh(mloaded) isa UnstructuredMesh
+    @test num_cells(mesh(mloaded)) == 7
+    @test collect(cell_nodes(mesh(mloaded), 1)) == [1, 4, 3]
+    @test collect(cell_nodes(mesh(mloaded), 3)) == [5, 6, 7, 8]
+    @test ManifoldFields._validate_topology!(mesh(mloaded), mds) === mesh(mloaded)
+
+    rm(path)
+    rm(epath)
+    rm(mpath)
+end
