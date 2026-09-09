@@ -147,6 +147,13 @@ should stay a separate work stream from conservative (overlap-weight)
 remapping: the two solve different problems (computing *on* foreign meshes vs.
 moving data *across* meshes).
 
+- Status: mesh type delivered 2026-09 as `UnstructuredMesh{M,P,MAX_K}`
+  (ManifoldMeshes 0.7) with mixed-cell support (bilinear for quads, Wachspress
+  otherwise): construction, connectivity derivation, k-d tree locate,
+  corner-solver interpolation; UGRID IO delivered in ManifoldFields (foreign
+  topologies reconstruct natively, any arity ≥ 3). The Voronoi dual remains
+  future work.
+
 ## Lazy and Out-of-Core
 
 Correctness remains the priority. Before using large atmospheric chemistry or

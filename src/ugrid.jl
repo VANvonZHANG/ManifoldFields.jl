@@ -662,8 +662,8 @@ end
     load_ugrid(path; grid_type = nothing, mesh = nothing) -> FieldSet
 
 Read a UGRID file as a `FieldSet`. `_FillValue` on data variables is applied
-per CF (fill entries surface as `missing`); connectivity variables are read
-raw so fill values stay integers. Topologies carrying `manifoldfields_*`
+per CF (fill entries surface as `missing`); the face-node connectivity variable
+is read raw so fill values stay integers. Topologies carrying `manifoldfields_*`
 metadata reconstruct their original grid; foreign topologies reconstruct as
 an `UnstructuredMesh` (at unit radius when `manifoldfields_radius` is absent).
 Passing `mesh=` bypasses reconstruction.

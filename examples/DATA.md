@@ -29,25 +29,20 @@ note: the open prints two harmless "coordinates are not regularly spaced" messag
 uxarray 2026.7.0 exposes the face count as the integer `uxds.uxgrid.n_face` — the older
 `nMesh2_face` accessor no longer exists.
 
-**UXarray writes → Julia reads** (`oQU480.ugrid.nc`): the container-name boundary is
-**fixed** (2026-09-07, unreleased): `load_ugrid` now discovers the topology container
-via `cf_role = "mesh_topology"` and resolves coordinates/connectivity through the
-container's attributes, so uxarray's `grid_topology` naming is read like any other.
-What remains is the *real* boundary — an arbitrary MPAS quad topology carries no
-manifold-native grid metadata, so `load_ugrid` raises
-
-```
-ArgumentError: cannot reconstruct a ManifoldMeshes grid from topology 'grid_topology': it carries no manifoldfields_* grid metadata (foreign UGRID file, e.g. written by UXarray); pass mesh= explicitly if the geometry matches one of the four grid types
-```
-
-ManifoldFields reconstructs one of its four grid types from own-file UGRID metadata;
-an arbitrary MPAS quad topology matches none of them. `load_ugrid(path; mesh = m)`
-exists for foreign files whose geometry *does* match a ManifoldMeshes grid.
-(An earlier measurement of this file failed one stage earlier —
-`ArgumentError: UGRID dataset has no data variables (variables with a mesh attribute)`
-— because our conversion script then stripped all data-var attributes; that was our
-bug, fixed in `scripts/prepare_ugrid.py`, not an uxarray limitation. A second, now
-also-fixed stage looked the container up under the hard-coded name `Mesh2`.)
+**UXarray writes → Julia reads** (`oQU480.ugrid.nc`): loads natively (2026-09-08,
+unreleased): `load_ugrid` discovers the topology via `cf_role = "mesh_topology"`
+(PR #8) and reconstructs the connectivity generically as a
+`ManifoldMeshes.UnstructuredMesh` — an arbitrary spherical polygon mesh stored
+as data (mixed cell arity supported) — so foreign MPAS/ICON-style files no
+longer require matching one of the four parametric grid types.
+`load_ugrid(path; mesh = m)` still forces a specific grid when the geometry
+matches. Only degenerate connectivity (fewer than 3 nodes per cell) remains an
+actionable error. Measured (2026-09-09, unreleased): the file loads as
+`UnstructuredMesh` with 1791 cells / 3947 nodes, exactly matching
+`ux.open_dataset(...).uxgrid.n_face/n_node` (uxarray 2026.7.0), and
+`bottomDepth` reads back as [4973.0, 4123.0, 2639.0] on the first three cells;
+uxarray's node-major `(n_max_face_nodes, n_face)` connectivity layout is
+oriented by dimension name on read.
 
 **UXarray round-trip of a Julia-written file** (`cubedsphere_copy.nc`, written by the
 ch02 Python notebook via `uxds.uxgrid.to_xarray()` + data-var merge): loads natively
