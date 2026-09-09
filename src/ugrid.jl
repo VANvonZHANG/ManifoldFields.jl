@@ -290,8 +290,22 @@ function _topology_variables(ds::UGridDataset)
     meshvar = ds.variables[name]
     node_lon, node_lat = _node_coordinate_vars(ds, meshvar)
     face_nodes = _require_var(ds, String(_require_attr(meshvar, "face_node_connectivity")))
+    face_nodes = _orient_face_nodes(face_nodes, meshvar)
     return (name = name, meshvar = meshvar, node_lon = node_lon, node_lat = node_lat,
         face_nodes = face_nodes)
+end
+
+# UGRID makes the face dimension the slowest-varying (first) dimension of
+# face_node_connectivity, but some writers store it node-major — e.g. UXarray's
+# `to_xarray` emits `(n_max_face_nodes, n_face)` — so orient by dimension name
+# and every consumer sees one row per face.
+function _orient_face_nodes(face_nodes::UGridVariable, meshvar::UGridVariable)
+    face_dim = String(get(meshvar.attrs, "face_dimension", "n_face"))
+    if length(face_nodes.dims) == 2 && face_nodes.dims[2] == face_dim
+        return UGridVariable(permutedims(face_nodes.data),
+            (face_nodes.dims[2], face_nodes.dims[1]), copy(face_nodes.attrs))
+    end
+    return face_nodes
 end
 
 function _topology_aux_names(meshvar::UGridVariable, topology_name::String)
@@ -309,7 +323,7 @@ function _find_data_vars(ds::UGridDataset, topology_name::String, aux)
     return sort!([name
                   for (name, var) in ds.variables
                   if get(var.attrs, "mesh", "") == topology_name && !(name in aux) &&
-                         !haskey(var.attrs, "cf_role")])
+                     !haskey(var.attrs, "cf_role")])
 end
 
 function _infer_location(var::UGridVariable, meshvar::UGridVariable)
