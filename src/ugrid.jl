@@ -459,8 +459,18 @@ function from_ugrid_mesh(ds::UGridDataset; grid_type = nothing, mesh = nothing)
     end
 
     attrs = meshvar.attrs
-    haskey(attrs, "manifoldfields_grid_type") || throw(ArgumentError(
-        "cannot reconstruct a ManifoldMeshes grid from topology '$(topo.name)': it carries no manifoldfields_* grid metadata (foreign UGRID file, e.g. written by UXarray); pass mesh= explicitly if the geometry matches one of the four grid types"))
+    if !haskey(attrs, "manifoldfields_grid_type")
+        # Foreign topology: reconstruct generically as an UnstructuredMesh when
+        # the connectivity forms valid cells; otherwise stay actionable.
+        m = try
+            _unstructured_from_topology(topo, attrs)
+        catch err
+            err isa ArgumentError || rethrow()
+            throw(ArgumentError(
+                "cannot reconstruct a ManifoldMeshes grid from topology '$(topo.name)': it carries no manifoldfields_* grid metadata and its connectivity cannot form an UnstructuredMesh ($(err.msg)); pass mesh= explicitly if the geometry matches a supported grid type"))
+        end
+        return _validate_node_coordinates!(m, ds)
+    end
     requested_grid_type = grid_type === nothing ? attrs["manifoldfields_grid_type"] :
                           grid_type
     if requested_grid_type == "LatLonGrid"
@@ -602,7 +612,14 @@ function save_ugrid(x, path::AbstractString; format = :netcdf)
     return nothing
 end
 
-function _read_var_data(v)
+function _read_var_data(nc, name)
+    # Connectivity variables are read raw: `_FillValue` entries stay as their
+    # on-disk value instead of being masked to `missing` by the CF layer, so
+    # the fill-aware topology readers see the fill value itself. Everything
+    # else is CF-decoded (`_FillValue` per CF, scale/offset unpacked).
+    raw = occursin("face_node_connectivity",
+        String(get(nc[name].attrib, "cf_role", "")))
+    v = raw ? NCDatasets.variable(nc, name) : nc[name]
     names = NCDatasets.dimnames(v)
     indices = ntuple(_ -> Colon(), length(names))
     return isempty(indices) ? v[] : v[indices...]
@@ -616,20 +633,27 @@ function _read_ugrid_dataset(path::AbstractString)
             attrs[String(k)] = v
         end
         for name in keys(nc)
-            # raw variable: _FillValue entries stay as their on-disk value
-            # instead of being masked to `missing` by the CF layer, so the
-            # fill-aware topology readers see the fill value itself
-            v = NCDatasets.variable(nc, String(name))
+            raw = NCDatasets.variable(nc, String(name))
             vars[String(name)] = UGridVariable(
-                _read_var_data(v),
-                Tuple(String.(NCDatasets.dimnames(v))),
-                Dict{String, Any}(String(k) => val for (k, val) in v.attrib)
+                _read_var_data(nc, String(name)),
+                Tuple(String.(NCDatasets.dimnames(raw))),
+                Dict{String, Any}(String(k) => val for (k, val) in raw.attrib)
             )
         end
     end
     return UGridDataset(vars, attrs)
 end
 
+"""
+    load_ugrid(path; grid_type = nothing, mesh = nothing) -> FieldSet
+
+Read a UGRID file as a `FieldSet`. `_FillValue` on data variables is applied
+per CF (fill entries surface as `missing`); connectivity variables are read
+raw so fill values stay integers. Topologies carrying `manifoldfields_*`
+metadata reconstruct their original grid; foreign topologies reconstruct as
+an `UnstructuredMesh` (at unit radius when `manifoldfields_radius` is absent).
+Passing `mesh=` bypasses reconstruction.
+"""
 function load_ugrid(path::AbstractString; grid_type = nothing, mesh = nothing)
     return from_ugrid(_read_ugrid_dataset(path); grid_type = grid_type, mesh = mesh)
 end
