@@ -265,8 +265,9 @@ end
     delete!(missing_face_nodes_ds.variables, "Mesh2_face_nodes")
     @test_throws ArgumentError from_ugrid_mesh(missing_face_nodes_ds)
 
+    # manifoldfields_grid_type absence takes the foreign fallback (Task 9);
+    # with a grid type declared, its specific reconstruction attrs are required
     for attr in (
-        "manifoldfields_grid_type",
         "manifoldfields_lat_edges",
         "manifoldfields_lon_edges",
         "manifoldfields_radius"
@@ -375,9 +376,12 @@ end
     fn.data .= fn.data .- 1
     fn.attrs["start_index"] = 0
 
-    # no mesh source -> error
-    @test_throws ArgumentError from_ugrid_mesh(ext)
-    @test_throws ArgumentError from_ugrid(ext)
+    # no mesh source -> reconstructs as UnstructuredMesh
+    @test from_ugrid_mesh(ext) isa UnstructuredMesh
+    fs_ext = from_ugrid(ext)
+    @test fs_ext isa FieldSet
+    @test mesh(fs_ext) isa UnstructuredMesh
+    @test data(fs_ext[:node_temp]) == node_values(g)
 
     # injected mesh validates (0-based external connectivity)
     m = from_ugrid_mesh(ext; mesh = g)
@@ -549,18 +553,23 @@ end
     @test typeof(mesh(loaded)) == typeof(g)
     @test data(loaded[:node_temp]) == node_values(g)
 
-    # foreign boundary: no manifoldfields_* metadata -> actionable error; mesh= rescues
+    # foreign topology: no manifoldfields_* metadata -> reconstructs as UnstructuredMesh
     ext = uxarray_style(to_ugrid(f))
     ma = ext.variables["grid_topology"].attrs
     for k in collect(keys(ma))
         startswith(k, "manifoldfields_") && delete!(ma, k)
     end
-    @test_throws ArgumentError from_ugrid_mesh(ext)
-    @test_throws ArgumentError from_ugrid(ext)
-    @test from_ugrid_mesh(ext; mesh = g) === g
-    fs = from_ugrid(ext; mesh = g)
+    fm = from_ugrid_mesh(ext)
+    @test fm isa UnstructuredMesh
+    @test num_cells(fm) == num_cells(g)
+    @test num_nodes(fm) == num_nodes(g)
+    @test collect(cell_nodes(fm, 1)) == collect(cell_nodes(g, 1))
+    fs = from_ugrid(ext)
     @test fs isa FieldSet
+    @test mesh(fs) isa UnstructuredMesh
     @test data(fs[:node_temp]) == node_values(g)
+    # mesh= injection still wins over reconstruction
+    @test from_ugrid_mesh(ext; mesh = g) === g
 
     # multiple containers: the Mesh2 one (with data + metadata) is preferred
     dual = to_ugrid(f)
@@ -668,4 +677,261 @@ end
     # no metadata written -> reconstructed FieldSet keeps NoMetadata (not an empty Dict)
     plain = from_ugrid(to_ugrid(FieldSet(g, :u => u, :v => v)))
     @test DimensionalData.metadata(plain) isa DimensionalData.NoMetadata
+end
+
+@testset "UGRID UnstructuredMesh round-trip" begin
+    g = LatLonGrid(lat_edges = collect(range(-90.0, 90.0; length = 5)),
+        lon_edges = collect(range(0.0, 360.0; length = 9)))
+    fn = Matrix{Int}(undef, num_cells(g), 4)
+    for c in 1:num_cells(g)
+        fn[c, :] .= collect(cell_nodes(g, c))
+    end
+    node_lon = Vector{Float64}(undef, num_nodes(g))
+    node_lat = Vector{Float64}(undef, num_nodes(g))
+    for n in 1:num_nodes(g)
+        lon, lat = ManifoldFields._lonlat(node_coordinates(g, n))
+        node_lon[n] = lon
+        node_lat[n] = lat
+    end
+    m = UnstructuredMesh(node_lon, node_lat, fn; R = g.R, start_index = 1)
+
+    f = DiscreteField(CellLoc, m, cell_values(g), cell_dims(g); name = :cell_area)
+    ds = to_ugrid(f)
+    @test ds.variables["Mesh2"].attrs["manifoldfields_grid_type"] == "UnstructuredMesh"
+    @test ds.variables["Mesh2"].attrs["manifoldfields_radius"] == m.R
+    # all-quad mesh: no fill needed, output shape identical to parametric grids
+    @test size(ds.variables["Mesh2_face_nodes"].data) == (num_cells(m), 4)
+    @test !haskey(ds.variables["Mesh2_face_nodes"].attrs, "_FillValue")
+
+    path = tempname() * ".nc"
+    save_ugrid(f, path)
+    loaded = load_ugrid(path)
+    @test loaded isa FieldSet
+    @test mesh(loaded) isa UnstructuredMesh
+    @test num_cells(mesh(loaded)) == num_cells(m)
+    @test num_nodes(mesh(loaded)) == num_nodes(m)
+    @test collect(cell_nodes(mesh(loaded), 3)) == collect(cell_nodes(m, 3))
+    @test data(loaded[:cell_area]) == data(f)
+
+    # EdgeLoc round-trip relies on deterministic edge numbering (scan order).
+    # Data comes from m, not g: the derived mesh has nlat extra seam edges
+    # (2 for this grid), so lengths differ from LatLonGrid's.
+    ef = DiscreteField(EdgeLoc, m, edge_values(m), edge_dims(m); name = :edge_flux)
+    epath = tempname() * ".nc"
+    save_ugrid(ef, epath)
+    eloaded = load_ugrid(epath)
+    @test eloaded[:edge_flux] isa DiscreteField{EdgeLoc}
+    @test data(eloaded[:edge_flux]) == data(ef)
+
+    # mixed mesh: triangulated +x face, padded with fill; _FillValue written,
+    # round-trip preserves arity and per-cell node lists
+    cube_xyz = [(1, 1, 1), (1, 1, -1), (1, -1, -1), (1, -1, 1),
+        (-1, 1, 1), (-1, 1, -1), (-1, -1, -1), (-1, -1, 1)]
+    cube_lon = Vector{Float64}(undef, 8)
+    cube_lat = Vector{Float64}(undef, 8)
+    for n in 1:8
+        lat,
+        lon = ManifoldMeshes._cartesian_to_latlon(
+            SVector{3, Float64}(cube_xyz[n]) ./ sqrt(3))
+        cube_lon[n] = lon
+        cube_lat[n] = lat
+    end
+    cube_split = [1 4 3 -1; 1 3 2 -1; 5 6 7 8; 1 2 6 5; 4 3 7 8; 1 4 8 5; 2 3 7 6]
+    mm = UnstructuredMesh(cube_lon, cube_lat, cube_split; start_index = 1,
+        fill_value = -1)
+    mf = DiscreteField(CellLoc, mm, collect(Float64, 1:num_cells(mm)),
+        cell_dims(mm); name = :val)
+    mds = to_ugrid(mf)
+    fvar = mds.variables["Mesh2_face_nodes"]
+    @test size(fvar.data) == (7, 4)
+    @test fvar.attrs["_FillValue"] == -1
+    @test fvar.data[1, :] == [1, 4, 3, -1]
+    mpath = tempname() * ".nc"
+    save_ugrid(mf, mpath)
+    mloaded = load_ugrid(mpath)
+    @test mesh(mloaded) isa UnstructuredMesh
+    @test num_cells(mesh(mloaded)) == 7
+    @test collect(cell_nodes(mesh(mloaded), 1)) == [1, 4, 3]
+    @test collect(cell_nodes(mesh(mloaded), 3)) == [5, 6, 7, 8]
+    @test ManifoldFields._validate_topology!(mesh(mloaded), mds) === mesh(mloaded)
+
+    rm(path)
+    rm(epath)
+    rm(mpath)
+end
+
+@testset "UGRID foreign triangle topology loads" begin
+    g = small_grid()
+    f = DiscreteField(NodeLoc, g, node_values(g), node_dims(g); name = :node_temp)
+    ext = UGridDataset(
+        Dict{String, ManifoldFields.UGridVariable}(),
+        Dict{String, Any}("Conventions" => "CF-1.11 UGRID-1.0")
+    )
+    ext.variables["node_lon"] = ManifoldFields.UGridVariable(
+        [ManifoldFields._lonlat(node_coordinates(g, n))[1] for n in 1:num_nodes(g)],
+        ("n_node",), Dict{String, Any}("standard_name" => "longitude"))
+    ext.variables["node_lat"] = ManifoldFields.UGridVariable(
+        [ManifoldFields._lonlat(node_coordinates(g, n))[2] for n in 1:num_nodes(g)],
+        ("n_node",), Dict{String, Any}("standard_name" => "latitude"))
+    tri = Matrix{Int}(undef, num_cells(g), 3)          # triangles: fan each quad
+    for c in 1:num_cells(g)
+        sw, se, ne, nw = cell_nodes(g, c)
+        tri[c, :] .= [sw, se, nw] .- 1
+    end
+    ext.variables["face_node_connectivity"] = ManifoldFields.UGridVariable(
+        tri, ("n_face", "n_max_face_nodes"),
+        Dict{String, Any}("cf_role" => "face_node_connectivity", "start_index" => 0))
+    ext.variables["grid_topology"] = ManifoldFields.UGridVariable(0, (),
+        Dict{String, Any}(
+            "cf_role" => "mesh_topology",
+            "topology_dimension" => 2,
+            "node_coordinates" => "node_lon node_lat",
+            "face_node_connectivity" => "face_node_connectivity",
+            "face_dimension" => "n_face"
+        ))
+    ext.variables["depth"] = ManifoldFields.UGridVariable(
+        cell_values(g), ("n_face",), Dict{String, Any}("mesh" => "grid_topology"))
+    fm = from_ugrid_mesh(ext)
+    @test fm isa UnstructuredMesh
+    @test num_cells(fm) == num_cells(g)
+    fs = from_ugrid(ext)
+    @test fs[:depth] isa DiscreteField{CellLoc}   # location inferred from n_face
+    @test data(fs[:depth]) == cell_values(g)
+end
+
+@testset "UGRID foreign node-major connectivity (UXarray layout)" begin
+    # UXarray's to_xarray writes face_node_connectivity as
+    # (n_max_face_nodes, n_face); the reader orients by dimension name.
+    g = small_grid()
+    f = DiscreteField(NodeLoc, g, node_values(g), node_dims(g); name = :node_temp)
+    ext = UGridDataset(
+        Dict{String, ManifoldFields.UGridVariable}(),
+        Dict{String, Any}("Conventions" => "CF-1.11 UGRID-1.0")
+    )
+    ext.variables["node_lon"] = ManifoldFields.UGridVariable(
+        [ManifoldFields._lonlat(node_coordinates(g, n))[1] for n in 1:num_nodes(g)],
+        ("n_node",), Dict{String, Any}("standard_name" => "longitude"))
+    ext.variables["node_lat"] = ManifoldFields.UGridVariable(
+        [ManifoldFields._lonlat(node_coordinates(g, n))[2] for n in 1:num_nodes(g)],
+        ("n_node",), Dict{String, Any}("standard_name" => "latitude"))
+    tri = Matrix{Int}(undef, num_cells(g), 3)          # triangles: fan each quad
+    for c in 1:num_cells(g)
+        sw, se, ne, nw = cell_nodes(g, c)
+        tri[c, :] .= [sw, se, nw] .- 1
+    end
+    ext.variables["face_node_connectivity"] = ManifoldFields.UGridVariable(
+        permutedims(tri), ("n_max_face_nodes", "n_face"),
+        Dict{String, Any}("cf_role" => "face_node_connectivity", "start_index" => 0))
+    ext.variables["grid_topology"] = ManifoldFields.UGridVariable(0, (),
+        Dict{String, Any}(
+            "cf_role" => "mesh_topology",
+            "topology_dimension" => 2,
+            "node_coordinates" => "node_lon node_lat",
+            "face_node_connectivity" => "face_node_connectivity",
+            "face_dimension" => "n_face"
+        ))
+    ext.variables["depth"] = ManifoldFields.UGridVariable(
+        cell_values(g), ("n_face",), Dict{String, Any}("mesh" => "grid_topology"))
+    fm = from_ugrid_mesh(ext)
+    @test fm isa UnstructuredMesh
+    @test num_cells(fm) == num_cells(g)
+    sw, se, ne, nw = cell_nodes(g, 1)
+    @test collect(cell_nodes(fm, 1)) == [sw, se, nw]
+    fs = from_ugrid(ext)
+    @test fs[:depth] isa DiscreteField{CellLoc}
+    @test data(fs[:depth]) == cell_values(g)
+
+    # the mesh= validation path orients the same way
+    @test ManifoldFields._validate_topology!(fm, ext) === fm
+end
+
+@testset "UGRID foreign degenerate topology errors" begin
+    g = small_grid()
+    ext = UGridDataset(
+        Dict{String, ManifoldFields.UGridVariable}(),
+        Dict{String, Any}("Conventions" => "CF-1.11 UGRID-1.0")
+    )
+    ext.variables["node_lon"] = ManifoldFields.UGridVariable(
+        [ManifoldFields._lonlat(node_coordinates(g, n))[1] for n in 1:num_nodes(g)],
+        ("n_node",), Dict{String, Any}("standard_name" => "longitude"))
+    ext.variables["node_lat"] = ManifoldFields.UGridVariable(
+        [ManifoldFields._lonlat(node_coordinates(g, n))[2] for n in 1:num_nodes(g)],
+        ("n_node",), Dict{String, Any}("standard_name" => "latitude"))
+    pairs = Matrix{Int}(undef, num_cells(g), 2)        # 2-node "cells": invalid
+    for c in 1:num_cells(g)
+        sw, se = collect(cell_nodes(g, c))[1:2]
+        pairs[c, :] .= [sw, se] .- 1
+    end
+    ext.variables["face_node_connectivity"] = ManifoldFields.UGridVariable(
+        pairs, ("n_face", "n_max_face_nodes"),
+        Dict{String, Any}("cf_role" => "face_node_connectivity", "start_index" => 0))
+    ext.variables["grid_topology"] = ManifoldFields.UGridVariable(0, (),
+        Dict{String, Any}(
+            "cf_role" => "mesh_topology",
+            "topology_dimension" => 2,
+            "node_coordinates" => "node_lon node_lat",
+            "face_node_connectivity" => "face_node_connectivity",
+            "face_dimension" => "n_face"
+        ))
+    ext.variables["depth"] = ManifoldFields.UGridVariable(
+        cell_values(g), ("n_face",), Dict{String, Any}("mesh" => "grid_topology"))
+    @test_throws ArgumentError from_ugrid_mesh(ext)
+    @test_throws ArgumentError from_ugrid(ext)
+
+    midfill = deepcopy(pairs)          # same nodes, but fill inside a row
+    midfill = Matrix{Int}(undef, num_cells(g), 4)
+    for c in 1:num_cells(g)
+        sw, se, ne, nw = collect(cell_nodes(g, c))
+        midfill[c, :] .= c == 1 ? [sw, -1, ne, nw] : [sw, se, ne, nw]
+    end
+    ext.variables["face_node_connectivity"] = ManifoldFields.UGridVariable(
+        midfill, ("n_face", "n_max_face_nodes"),
+        Dict{String, Any}("cf_role" => "face_node_connectivity",
+            "start_index" => 0, "_FillValue" => -1))
+    @test_throws ArgumentError from_ugrid_mesh(ext)
+end
+
+@testset "UGRID foreign edge data rejected" begin
+    g = small_grid()
+    ext = to_ugrid(DiscreteField(EdgeLoc, g, edge_values(g), edge_dims(g);
+        name = :edge_flux))
+    # uxarray-style rename + strip manifoldfields_* => foreign
+    for (name, var) in collect(ext.variables)
+        newname = name == "Mesh2" ? "grid_topology" :
+                  name == "Mesh2_node_lon" ? "node_lon" :
+                  name == "Mesh2_node_lat" ? "node_lat" :
+                  name == "Mesh2_face_nodes" ? "face_node_connectivity" : name
+        newattrs = Dict{String, Any}(k => v for (k, v) in var.attrs)
+        if newname == "grid_topology"
+            newattrs["node_coordinates"] = "node_lat node_lon"
+            newattrs["face_node_connectivity"] = "face_node_connectivity"
+            for k in collect(keys(newattrs))
+                startswith(k, "manifoldfields_") && delete!(newattrs, k)
+            end
+        elseif newname == "face_node_connectivity"
+            newattrs["start_index"] = 0
+            ext.variables[name].data .-= 1
+        elseif haskey(newattrs, "mesh")
+            newattrs["mesh"] = "grid_topology"
+        end
+        ext.variables[newname] = ManifoldFields.UGridVariable(
+            ext.variables[name].data, var.dims, newattrs)
+        newname == name || delete!(ext.variables, name)
+    end
+    @test_throws ArgumentError from_ugrid(ext)
+    # mesh= injection still loads edge fields (user's mesh, deterministic)
+    fs = from_ugrid(ext; mesh = g)
+    @test fs[:edge_flux] isa DiscreteField{EdgeLoc}
+    @test data(fs[:edge_flux]) == edge_values(g)
+end
+
+@testset "UGRID real-file regression (oQU480; local artifact only)" begin
+    path = joinpath(@__DIR__, "..", "examples", "data", "oQU480.ugrid.nc")
+    isfile(path) || return   # artifact is fetched on demand, never bundled — CI skips
+    fs = load_ugrid(path)
+    @test mesh(fs) isa UnstructuredMesh
+    @test num_cells(mesh(fs)) == 1791
+    @test num_nodes(mesh(fs)) == 3947
+    vals = coalesce.(data(fs[:bottomDepth])[1:3], NaN)
+    @test vals ≈ [4973.0, 4123.0, 2639.0]
 end

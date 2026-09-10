@@ -7,4 +7,4 @@ ManifoldMeshes = "d2a7aed9-80bb-46a9-9a56-e170a93cc177"
 [compat]
 DimensionalData = "0.29"
 Documenter = "1"
-ManifoldMeshes = "0.6"
+ManifoldMeshes = "0.7"

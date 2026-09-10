@@ -35,6 +35,13 @@ releases.
 - `from_ugrid` reads UGRID global attributes back into FieldSet-level metadata.
 - Add `examples/` — a paired Pluto/marimo tutorial for UXarray users, with a
   release-hosted example-data artifact (nothing bundled with `Pkg.add`).
+- Foreign UGRID topologies now reconstruct generically as
+  `ManifoldMeshes.UnstructuredMesh` (any cell arity ≥ 3 — quads, triangles,
+  ICON hexagons) instead of erroring — `load_ugrid` is a general UGRID reader
+  (requires ManifoldMeshes 0.7). Mixed-arity meshes round-trip with
+  `_FillValue`-padded connectivity; parametric-grid output is unchanged.
+  Degenerate connectivity keeps an actionable `mesh=` error.
+  `load_ugrid(path; mesh = m)` still forces a specific grid.
 
 ### Changed
 
@@ -53,6 +60,12 @@ releases.
   reconstruction; foreign geometries fail there with an actionable error
   pointing at `mesh =`, and UXarray round-trips of ManifoldFields-written files
   load natively (topology metadata survives the round trip).
+- Node-major `(n_max_face_nodes, n_face)` face-node connectivity layouts (as
+  emitted in this repo's earlier tutorial artifacts) are oriented on read by
+  comparing the connectivity's second dimension to the declared
+  `face_dimension`.
+- `_FillValue` is now written before the data definition (and cast to the
+  on-disk type), matching netCDF define-mode practice.
 - `Base.cat` on `FieldSet`s now validates mesh identity (`===`) before
   concatenating.
 

@@ -11,6 +11,7 @@ import ManifoldMeshes:
                        NodeLoc,
                        ProjectionStyle,
                        ReducedGaussianGrid,
+                       UnstructuredMesh,
                        cell_centroid,
                        cell_nodes,
                        edge_nodes,
@@ -69,14 +70,24 @@ function to_ugrid(mesh)
         Dict{String, Any}("standard_name" => "latitude", "units" => "degrees_north")
     )
 
-    face_nodes = Matrix{Int}(undef, num_cells(mesh), 4)
+    ks = [length(cell_nodes(mesh, c)) for c in 1:num_cells(mesh)]
+    max_k = maximum(ks)
+    fill_value = -1
+    face_nodes = fill(fill_value, num_cells(mesh), max_k)
     for c in 1:num_cells(mesh)
-        face_nodes[c, :] .= cell_nodes(mesh, c)
+        face_nodes[c, 1:ks[c]] .= collect(cell_nodes(mesh, c))
+    end
+    fn_attrs = Dict{String, Any}(
+        "cf_role" => "face_node_connectivity",
+        "start_index" => 1
+    )
+    if !all(ks .== max_k)
+        fn_attrs["_FillValue"] = fill_value
     end
     variables["Mesh2_face_nodes"] = UGridVariable(
         face_nodes,
         ("n_face", "n_max_face_nodes"),
-        Dict{String, Any}("cf_role" => "face_node_connectivity", "start_index" => 1)
+        fn_attrs
     )
 
     return UGridDataset(
@@ -119,6 +130,12 @@ function _add_own_file_mesh_metadata!(attrs, mesh::HEALPixGrid)
     attrs["manifoldfields_nside"] = mesh.nside
     attrs["manifoldfields_ordering"] = String(mesh.ordering)
     attrs["manifoldfields_rotation"] = collect(vec(mesh.rotation))
+    attrs["manifoldfields_radius"] = mesh.R
+    return attrs
+end
+
+function _add_own_file_mesh_metadata!(attrs, mesh::UnstructuredMesh)
+    attrs["manifoldfields_grid_type"] = "UnstructuredMesh"
     attrs["manifoldfields_radius"] = mesh.R
     return attrs
 end
@@ -273,8 +290,22 @@ function _topology_variables(ds::UGridDataset)
     meshvar = ds.variables[name]
     node_lon, node_lat = _node_coordinate_vars(ds, meshvar)
     face_nodes = _require_var(ds, String(_require_attr(meshvar, "face_node_connectivity")))
+    face_nodes = _orient_face_nodes(face_nodes, meshvar)
     return (name = name, meshvar = meshvar, node_lon = node_lon, node_lat = node_lat,
         face_nodes = face_nodes)
+end
+
+# UGRID makes the face dimension the slowest-varying (first) dimension of
+# face_node_connectivity, but some writers store it node-major — e.g. UXarray's
+# `to_xarray` emits `(n_max_face_nodes, n_face)` — so orient by dimension name
+# and every consumer sees one row per face.
+function _orient_face_nodes(face_nodes::UGridVariable, meshvar::UGridVariable)
+    face_dim = String(get(meshvar.attrs, "face_dimension", "n_face"))
+    if length(face_nodes.dims) == 2 && face_nodes.dims[2] == face_dim
+        return UGridVariable(permutedims(face_nodes.data),
+            (face_nodes.dims[2], face_nodes.dims[1]), copy(face_nodes.attrs))
+    end
+    return face_nodes
 end
 
 function _topology_aux_names(meshvar::UGridVariable, topology_name::String)
@@ -382,9 +413,13 @@ function _validate_topology!(m, ds::UGridDataset)
     num_cells(m) == n_face || throw(ArgumentError(
         "mesh cell count $(num_cells(m)) != UGRID face count $n_face"))
     start_index = Int(get(topo.face_nodes.attrs, "start_index", 0))
+    fillv = haskey(topo.face_nodes.attrs, "_FillValue") ?
+            Int(topo.face_nodes.attrs["_FillValue"]) : nothing
     for c in 1:num_cells(m)
         expected = collect(Int, cell_nodes(m, c))
-        actual = Int.(collect(topo.face_nodes.data[c, :])) .+ (1 - start_index)
+        row = Int.(collect(topo.face_nodes.data[c, :]))
+        active = fillv === nothing ? row : row[row .!= fillv]
+        actual = active .+ (1 - start_index)
         actual == expected || throw(ArgumentError(
             "UGRID face_node_connectivity row $c does not match mesh connectivity (start_index-normalized)"))
     end
@@ -405,6 +440,27 @@ function _validate_node_coordinates!(m, ds::UGridDataset; atol = 1e-8)
     return m
 end
 
+function _unstructured_from_topology(topo, attrs)
+    fn = topo.face_nodes
+    fillv = haskey(fn.attrs, "_FillValue") ? Int(fn.attrs["_FillValue"]) : nothing
+    ks = [fillv === nothing ? size(fn.data, 2) :
+          count(!=(fillv), Int.(fn.data[c, :])) for c in 1:size(fn.data, 1)]
+    all(3 .<= ks) || throw(ArgumentError(
+        "face_node_connectivity of topology '$(topo.name)' has cells with fewer than 3 nodes"))
+    start_index = Int(get(fn.attrs, "start_index", 0))
+    conn = Matrix{Int}(fn.data)
+    for c in 1:size(conn, 1)
+        for k in 1:ks[c]
+            conn[c, k] += (1 - start_index)
+        end
+    end
+    R = haskey(attrs, "manifoldfields_radius") ?
+        Float64(attrs["manifoldfields_radius"]) : 1.0
+    return UnstructuredMesh(collect(Float64, topo.node_lon.data),
+        collect(Float64, topo.node_lat.data), conn; R = R, start_index = 1,
+        fill_value = fillv === nothing ? -1 : fillv)
+end
+
 function from_ugrid_mesh(ds::UGridDataset; grid_type = nothing, mesh = nothing)
     topo = _topology_variables(ds)
     meshvar = topo.meshvar
@@ -417,8 +473,18 @@ function from_ugrid_mesh(ds::UGridDataset; grid_type = nothing, mesh = nothing)
     end
 
     attrs = meshvar.attrs
-    haskey(attrs, "manifoldfields_grid_type") || throw(ArgumentError(
-        "cannot reconstruct a ManifoldMeshes grid from topology '$(topo.name)': it carries no manifoldfields_* grid metadata (foreign UGRID file, e.g. written by UXarray); pass mesh= explicitly if the geometry matches one of the four grid types"))
+    if !haskey(attrs, "manifoldfields_grid_type")
+        # Foreign topology: reconstruct generically as an UnstructuredMesh when
+        # the connectivity forms valid cells; otherwise stay actionable.
+        m = try
+            _unstructured_from_topology(topo, attrs)
+        catch err
+            err isa ArgumentError || rethrow()
+            throw(ArgumentError(
+                "cannot reconstruct a ManifoldMeshes grid from topology '$(topo.name)': it carries no manifoldfields_* grid metadata and its connectivity cannot form an UnstructuredMesh ($(err.msg)); pass mesh= explicitly if the geometry matches a supported grid type"))
+        end
+        return _validate_node_coordinates!(m, ds)
+    end
     requested_grid_type = grid_type === nothing ? attrs["manifoldfields_grid_type"] :
                           grid_type
     if requested_grid_type == "LatLonGrid"
@@ -446,6 +512,9 @@ function from_ugrid_mesh(ds::UGridDataset; grid_type = nothing, mesh = nothing)
         radius = _metadata_float(attrs, "manifoldfields_radius")
         mesh = HEALPixGrid(nside = nside, ordering = ordering, rotation = rotation; R = radius)
         return _validate_node_coordinates!(_validate_topology!(mesh, ds), ds)
+    elseif requested_grid_type == "UnstructuredMesh"
+        m = _unstructured_from_topology(topo, attrs)
+        return _validate_node_coordinates!(m, ds)
     end
 
     throw(ArgumentError("cannot reconstruct mesh without supported ManifoldFields mesh metadata"))
@@ -459,11 +528,18 @@ function from_ugrid(ds::UGridDataset; grid_type = nothing, mesh = nothing)
         "UGRID dataset has no data variables (variables with a mesh attribute referencing topology '$topology_name')"))
     m = mesh === nothing ? from_ugrid_mesh(ds; grid_type = grid_type) :
         _validate_topology!(mesh, ds)
+    # A reconstructed UnstructuredMesh derives its edge numbering from the
+    # face-node table, not the file's edge ordering (edge_node_connectivity is
+    # never read), so edge data would silently bind to wrong edges.
+    foreign = mesh === nothing && !haskey(meshvar.attrs, "manifoldfields_grid_type")
     fields_nt = NamedTuple{Tuple(Symbol.(data_vars))}(map(data_vars) do varname
         var = ds.variables[varname]
         Loc = haskey(var.attrs, "location") ?
               _loc_from_ugrid(_require_attr(var, "location")) :
               _infer_location(var, meshvar)
+        Loc === EdgeLoc && foreign &&
+            throw(ArgumentError(
+                "foreign topology '$(topology_name)': edge data variables cannot be attached to a reconstructed UnstructuredMesh (its edge numbering is derived from the face-node table, not the file's edge ordering); pass mesh= explicitly or read edge variables separately"))
         return DiscreteField(Loc, m, var.data, _dims_from_ugrid(var, Loc);
             name = Symbol(varname), metadata = var.attrs)
     end)
@@ -516,13 +592,24 @@ function _write_attrs!(ncvar, attrs)
 end
 
 function _write_one_variable!(nc, name::String, var::UGridVariable)
-    ncvar = NCDatasets.defVar(nc, name, _nc_type(var), var.dims)
+    T = _nc_type(var)
+    ncvar = NCDatasets.defVar(nc, name, T, var.dims)
+    # NetCDF requires _FillValue to be defined before any data is written
+    # (error -122) and with the variable's on-disk type (error -45). All
+    # other attributes are written after the data, preserving the on-disk
+    # layout of fill-free files byte-for-byte.
+    attrs = var.attrs
+    if haskey(attrs, "_FillValue")
+        ncvar.attrib["_FillValue"] = T(attrs["_FillValue"])
+        attrs = copy(attrs)
+        delete!(attrs, "_FillValue")
+    end
     if var.dims == ()
         ncvar[] = var.data
     else
         ncvar[:] = var.data
     end
-    _write_attrs!(ncvar, var.attrs)
+    _write_attrs!(ncvar, attrs)
     return nc
 end
 
@@ -546,7 +633,14 @@ function save_ugrid(x, path::AbstractString; format = :netcdf)
     return nothing
 end
 
-function _read_var_data(v)
+function _read_var_data(nc, name)
+    # Connectivity variables are read raw: `_FillValue` entries stay as their
+    # on-disk value instead of being masked to `missing` by the CF layer, so
+    # the fill-aware topology readers see the fill value itself. Everything
+    # else is CF-decoded (`_FillValue` per CF, scale/offset unpacked).
+    raw = occursin("face_node_connectivity",
+        String(get(nc[name].attrib, "cf_role", "")))
+    v = raw ? NCDatasets.variable(nc, name) : nc[name]
     names = NCDatasets.dimnames(v)
     indices = ntuple(_ -> Colon(), length(names))
     return isempty(indices) ? v[] : v[indices...]
@@ -560,17 +654,27 @@ function _read_ugrid_dataset(path::AbstractString)
             attrs[String(k)] = v
         end
         for name in keys(nc)
-            v = nc[name]
+            raw = NCDatasets.variable(nc, String(name))
             vars[String(name)] = UGridVariable(
-                _read_var_data(v),
-                Tuple(String.(NCDatasets.dimnames(v))),
-                Dict{String, Any}(String(k) => val for (k, val) in v.attrib)
+                _read_var_data(nc, String(name)),
+                Tuple(String.(NCDatasets.dimnames(raw))),
+                Dict{String, Any}(String(k) => val for (k, val) in raw.attrib)
             )
         end
     end
     return UGridDataset(vars, attrs)
 end
 
+"""
+    load_ugrid(path; grid_type = nothing, mesh = nothing) -> FieldSet
+
+Read a UGRID file as a `FieldSet`. `_FillValue` on data variables is applied
+per CF (fill entries surface as `missing`); the face-node connectivity variable
+is read raw so fill values stay integers. Topologies carrying `manifoldfields_*`
+metadata reconstruct their original grid; foreign topologies reconstruct as
+an `UnstructuredMesh` (at unit radius when `manifoldfields_radius` is absent).
+Passing `mesh=` bypasses reconstruction.
+"""
 function load_ugrid(path::AbstractString; grid_type = nothing, mesh = nothing)
     return from_ugrid(_read_ugrid_dataset(path); grid_type = grid_type, mesh = mesh)
 end

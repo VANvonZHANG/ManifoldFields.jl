@@ -13,7 +13,7 @@ YAXArrays = "c21b50f5-aa40-41ea-b809-c0f5e47bfa5c"
 [compat]
 Aqua = "0.8"
 DimensionalData = "0.29"
-ManifoldMeshes = "0.6"
+ManifoldMeshes = "0.7"
 NCDatasets = "0.14"
 StaticArrays = "1.9"
 Statistics = "1.10"
