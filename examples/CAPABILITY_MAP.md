@@ -20,4 +20,4 @@ Remapping and batch-interpolation roadmap items live in [../ROADMAP.md](../ROADM
 | Topological aggregation | `da.topological_mean(...)` | — | roadmap |
 | Plotting | `da.plot()`, HoloViz | `ManifoldMeshes.plot_mesh` / `plot_mesh_filled` (CairoMakie) | ✅ shipped |
 
-> Note: chapter 04 measured an upstream bilinear-weights transposition bug in ManifoldMeshes 0.6.0 (LatLon/ReducedGaussian grids) — point interpolation works but with elevated error until the upstream fix; see `examples/DATA.md` and chapter 04.
+> Note: chapter 04 measured an upstream bilinear-weights transposition bug in ManifoldMeshes ≤ 0.7.0 (LatLon/ReducedGaussian grids); fixed in ManifoldMeshes 0.7.1 — the point-interpolation sweep error dropped from 0.105 to 0.0025. See `examples/DATA.md` and chapter 04.

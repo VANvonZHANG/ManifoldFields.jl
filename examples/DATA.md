@@ -82,9 +82,12 @@ follows the canonical nested scheme on both sides, but ManifoldMeshes centroid *
 staggered-ring cells differ from healpy's by half a cell in longitude, so cell-by-cell comparisons
 against file values must map by index, not by recomputed coordinates.
 
-**Point interpolation caveat** (measured in chapter 04): on ManifoldMeshes 0.6.0, `LatLonGrid._cell_local_coords`
-returns local (s, t) with the latitude/longitude fractions swapped relative to `_bilinear_weights`'s
-(SW, SE, NE, NW) convention, transposing the SE/NW weights; `ReducedGaussianGrid` shares the convention.
-The error is `|latfrac − lonfrac| · |V_SE − V_NW|` — zero at nodes and on cell diagonals — and a 441-point
-sweep on a 5° grid measured a maximum of 0.105 (nearest-neighbor on HEALPix nside=32 measured 0.026 for
-comparison). Chapter 04 documents the mechanism; the fix belongs upstream in ManifoldMeshes.
+**Point interpolation** (measured in chapter 04): the `LatLonGrid._cell_local_coords` (s, t)
+transposition on ManifoldMeshes ≤ 0.7.0 — latitude/longitude fractions swapped relative to
+`_bilinear_weights`'s (SW, SE, NE, NW) convention, transposing the SE/NW weights;
+`ReducedGaussianGrid` shared it — was **fixed upstream in ManifoldMeshes 0.7.1** (2026-09-10).
+The error had been `|latfrac − lonfrac| · |V_SE − V_NW|` (zero at nodes and on cell diagonals),
+measuring a maximum of 0.105 on a 441-point sweep over a 5° grid. Re-measured on ManifoldMeshes
+0.7.1 (examples Manifest at merge d9a9104, git source; ManifoldFields local main), the same sweep
+gives a maximum of 0.0025 (mean 0.0007) — an order of magnitude below nearest-neighbor on
+HEALPix nside=32 (0.026). Chapter 04 records the history.

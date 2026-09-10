@@ -81,17 +81,17 @@ end
 # ╔═╡ 00000000-0000-4000-8000-00000000003a
 md"""
 Maximum interpolation error over the 441-point sweep against the analytic
-truth — measured **0.105** (ManifoldFields v0.1.0 / ManifoldMeshes v0.6.0),
-which is *above* the `0.05` this smooth 5° grid should give. The sweep
-exposed a real bug, not a too-coarse grid: `LatLonGrid` feeds
-`_bilinear_weights` the latitude and longitude fractions swapped, so the SE
-and NW corner weights land on each other's nodes (at (-80, 299) the weights
-come back `(0.2, 0.0, 0.0, 0.8)` where correct bilinear gives
-`(0.2, 0.8, 0.0, 0.0)` — an error of ~1e-4 there). The transposition error
-is `|latfrac − lonfrac| · |V_SE − V_NW|` — it vanishes at nodes and along
-the cell diagonal, and the (12.3, 45.6) probe is small simply because
-`|V_SE − V_NW|` is locally small there (~0.02). Fix pending upstream in
-ManifoldMeshes.
+truth — measured **0.0025** on ManifoldMeshes v0.7.1. (On v0.6.0/v0.7.0 the
+same sweep measured **0.105**, which is how it earned its keep: it exposed a
+real bug, not a too-coarse grid. `LatLonGrid` fed `_bilinear_weights` the
+latitude and longitude fractions swapped, so the SE and NW corner weights
+landed on each other's nodes — at (-80, 299) the weights came back
+`(0.2, 0.0, 0.0, 0.8)` where correct bilinear gives `(0.2, 0.8, 0.0, 0.0)`.
+The error `|latfrac − lonfrac| · |V_SE − V_NW|` vanished at nodes, along
+cell diagonals, and at centroids, hiding it from the test suite.) With the
+transposition fixed upstream (`s` is the SW→SE longitude fraction, `t` the
+SW→NW latitude fraction), true bilinear on a 5° grid now sits an order of
+magnitude below UXarray's nearest-cell `0.026` — as it should.
 
 ## Recap
 
