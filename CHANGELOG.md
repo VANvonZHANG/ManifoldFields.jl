@@ -60,6 +60,12 @@ releases.
   reconstruction; foreign geometries fail there with an actionable error
   pointing at `mesh =`, and UXarray round-trips of ManifoldFields-written files
   load natively (topology metadata survives the round trip).
+- Node-major `(n_max_face_nodes, n_face)` face-node connectivity layouts (as
+  emitted in this repo's earlier tutorial artifacts) are oriented on read by
+  comparing the connectivity's second dimension to the declared
+  `face_dimension`.
+- `_FillValue` is now written before the data definition (and cast to the
+  on-disk type), matching netCDF define-mode practice.
 - `Base.cat` on `FieldSet`s now validates mesh identity (`===`) before
   concatenating.
 

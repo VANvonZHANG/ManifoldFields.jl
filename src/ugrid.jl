@@ -528,11 +528,17 @@ function from_ugrid(ds::UGridDataset; grid_type = nothing, mesh = nothing)
         "UGRID dataset has no data variables (variables with a mesh attribute referencing topology '$topology_name')"))
     m = mesh === nothing ? from_ugrid_mesh(ds; grid_type = grid_type) :
         _validate_topology!(mesh, ds)
+    # A reconstructed UnstructuredMesh derives its edge numbering from the
+    # face-node table, not the file's edge ordering (edge_node_connectivity is
+    # never read), so edge data would silently bind to wrong edges.
+    foreign = mesh === nothing && !haskey(meshvar.attrs, "manifoldfields_grid_type")
     fields_nt = NamedTuple{Tuple(Symbol.(data_vars))}(map(data_vars) do varname
         var = ds.variables[varname]
         Loc = haskey(var.attrs, "location") ?
               _loc_from_ugrid(_require_attr(var, "location")) :
               _infer_location(var, meshvar)
+        Loc === EdgeLoc && foreign && throw(ArgumentError(
+            "foreign topology '$(topology_name)': edge data variables cannot be attached to a reconstructed UnstructuredMesh (its edge numbering is derived from the face-node table, not the file's edge ordering); pass mesh= explicitly or read edge variables separately"))
         return DiscreteField(Loc, m, var.data, _dims_from_ugrid(var, Loc);
             name = Symbol(varname), metadata = var.attrs)
     end)

@@ -40,13 +40,19 @@ matches. Only degenerate connectivity (fewer than 3 nodes per cell) remains an
 actionable error. Measured (2026-09-09, unreleased): the file loads as
 `UnstructuredMesh` with 1791 cells / 3947 nodes, exactly matching
 `ux.open_dataset(...).uxgrid.n_face/n_node` (uxarray 2026.7.0), and
-`bottomDepth` reads back as [4973.0, 4123.0, 2639.0] on the first three cells;
-uxarray's node-major `(n_max_face_nodes, n_face)` connectivity layout is
-oriented by dimension name on read.
+`bottomDepth` reads back as [4973.0, 4123.0, 2639.0] on the first three cells.
+The reader orients node-major `(n_max_face_nodes, n_face)` connectivity layouts
+by dimension name when the second dimension equals the declared
+`face_dimension`; the current `oQU480.ugrid.nc` artifact is already face-major,
+but this repo's own earlier tutorial artifacts (e.g. `cubedsphere_copy.nc`'s
+re-emitted `Mesh2_face_nodes`) are node-major and need it. The reconstructed
+geometry is unit-sphere-normalized (foreign files' `sphere_radius` is not
+applied; data values are unaffected — areas and distances are not in meters).
 
 **UXarray round-trip of a Julia-written file** (`cubedsphere_copy.nc`, written by the
 ch02 Python notebook via `uxds.uxgrid.to_xarray()` + data-var merge): loads natively
-with `load_ugrid` (measured 2026-09-07) — uxarray preserves the original `Mesh2`
+with `load_ugrid` (measured 2026-09-07; native loading of this file requires the
+node-major orientation fix, 2026-09-09) — uxarray preserves the original `Mesh2`
 container together with its `manifoldfields_*` reconstruction attributes alongside
 its canonical `grid_topology` container, and discovery prefers `Mesh2` when a file
 carries multiple `cf_role = "mesh_topology"` containers. `psi` comes back on a

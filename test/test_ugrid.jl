@@ -890,3 +890,48 @@ end
             "start_index" => 0, "_FillValue" => -1))
     @test_throws ArgumentError from_ugrid_mesh(ext)
 end
+
+@testset "UGRID foreign edge data rejected" begin
+    g = small_grid()
+    ext = to_ugrid(DiscreteField(EdgeLoc, g, edge_values(g), edge_dims(g);
+        name = :edge_flux))
+    # uxarray-style rename + strip manifoldfields_* => foreign
+    for (name, var) in collect(ext.variables)
+        newname = name == "Mesh2" ? "grid_topology" :
+                  name == "Mesh2_node_lon" ? "node_lon" :
+                  name == "Mesh2_node_lat" ? "node_lat" :
+                  name == "Mesh2_face_nodes" ? "face_node_connectivity" : name
+        newattrs = Dict{String, Any}(k => v for (k, v) in var.attrs)
+        if newname == "grid_topology"
+            newattrs["node_coordinates"] = "node_lat node_lon"
+            newattrs["face_node_connectivity"] = "face_node_connectivity"
+            for k in collect(keys(newattrs))
+                startswith(k, "manifoldfields_") && delete!(newattrs, k)
+            end
+        elseif newname == "face_node_connectivity"
+            newattrs["start_index"] = 0
+            ext.variables[name].data .-= 1
+        elseif haskey(newattrs, "mesh")
+            newattrs["mesh"] = "grid_topology"
+        end
+        ext.variables[newname] = ManifoldFields.UGridVariable(
+            ext.variables[name].data, var.dims, newattrs)
+        newname == name || delete!(ext.variables, name)
+    end
+    @test_throws ArgumentError from_ugrid(ext)
+    # mesh= injection still loads edge fields (user's mesh, deterministic)
+    fs = from_ugrid(ext; mesh = g)
+    @test fs[:edge_flux] isa DiscreteField{EdgeLoc}
+    @test data(fs[:edge_flux]) == edge_values(g)
+end
+
+@testset "UGRID real-file regression (oQU480; local artifact only)" begin
+    path = joinpath(@__DIR__, "..", "examples", "data", "oQU480.ugrid.nc")
+    isfile(path) || return   # artifact is fetched on demand, never bundled — CI skips
+    fs = load_ugrid(path)
+    @test mesh(fs) isa UnstructuredMesh
+    @test num_cells(mesh(fs)) == 1791
+    @test num_nodes(mesh(fs)) == 3947
+    vals = coalesce.(data(fs[:bottomDepth])[1:3], NaN)
+    @test vals ≈ [4973.0, 4123.0, 2639.0]
+end
