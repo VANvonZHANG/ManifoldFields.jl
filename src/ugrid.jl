@@ -323,7 +323,7 @@ function _find_data_vars(ds::UGridDataset, topology_name::String, aux)
     return sort!([name
                   for (name, var) in ds.variables
                   if get(var.attrs, "mesh", "") == topology_name && !(name in aux) &&
-                     !haskey(var.attrs, "cf_role")])
+                         !haskey(var.attrs, "cf_role")])
 end
 
 function _infer_location(var::UGridVariable, meshvar::UGridVariable)
@@ -537,8 +537,9 @@ function from_ugrid(ds::UGridDataset; grid_type = nothing, mesh = nothing)
         Loc = haskey(var.attrs, "location") ?
               _loc_from_ugrid(_require_attr(var, "location")) :
               _infer_location(var, meshvar)
-        Loc === EdgeLoc && foreign && throw(ArgumentError(
-            "foreign topology '$(topology_name)': edge data variables cannot be attached to a reconstructed UnstructuredMesh (its edge numbering is derived from the face-node table, not the file's edge ordering); pass mesh= explicitly or read edge variables separately"))
+        Loc === EdgeLoc && foreign &&
+            throw(ArgumentError(
+                "foreign topology '$(topology_name)': edge data variables cannot be attached to a reconstructed UnstructuredMesh (its edge numbering is derived from the face-node table, not the file's edge ordering); pass mesh= explicitly or read edge variables separately"))
         return DiscreteField(Loc, m, var.data, _dims_from_ugrid(var, Loc);
             name = Symbol(varname), metadata = var.attrs)
     end)
