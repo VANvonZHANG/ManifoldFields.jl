@@ -109,8 +109,9 @@ def _(mo):
 
     Nearest-cell against the analytic truth on 200 random points (HEALPix
     nside = 32 ⇒ ~1.8° cells). The Julia twin runs a comparable sweep with true
-    interpolation — currently `0.105`, dominated by the LatLonGrid weight bug
-    documented in its final cell, versus `0.026` here.
+    interpolation — `0.0025` since ManifoldMeshes 0.7.1 fixed the LatLonGrid
+    bilinear weight transposition (it was `0.105` before), versus `0.026`
+    here.
     """
     )
     return
