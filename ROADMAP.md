@@ -88,11 +88,17 @@ has a corresponding concrete mesh representation (see
 
 ## Interpolation
 
-Current interpolation supports `NodeLoc`.
+Current interpolation supports `NodeLoc`, single-point and batched.
+
+Delivered 2026-09:
+
+- Batch node interpolation for many `(lat, lon)` query points in one call
+  (`interpolate(f, lats, lons)`), and the grid-target form
+  (`interpolate(f, dest_mesh)`) that also backs bilinear remapping in
+  `ManifoldRegrid.jl`.
 
 Planned extensions:
 
-- Batch node interpolation for many `(lat, lon)` query points in one call.
 - `CellLoc` nearest or containing-cell gather.
 - Defer `EdgeLoc` interpolation until there is a clear physical use case.
 

@@ -42,6 +42,8 @@ releases.
   `_FillValue`-padded connectivity; parametric-grid output is unchanged.
   Degenerate connectivity keeps an actionable `mesh=` error.
   `load_ugrid(path; mesh = m)` still forces a specific grid.
+- Batch node interpolation: `interpolate(f, lats, lons)` returns a `DimArray`
+  over a leading `Dim{:point}` axis with the field's trailing axes preserved.
 
 ### Changed
 

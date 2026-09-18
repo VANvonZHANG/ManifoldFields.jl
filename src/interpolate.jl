@@ -38,3 +38,44 @@ function interpolate(f::DiscreteField{NodeLoc}, p::SVector{3})
     lat, lon = _cartesian_to_latlon(p)
     return interpolate(f, lat, lon)
 end
+
+"""
+    interpolate(f::DiscreteField{NodeLoc}, lats, lons) -> DimArray
+
+Bilinear node interpolation at many query points in one call. `lats` and `lons`
+are equal-length vectors in degrees (`lon` is taken mod 360); the result is a
+`DimArray` carrying the field name, a leading `Dim{:point}` axis and the
+field's trailing axes unchanged.
+"""
+function interpolate(f::DiscreteField{NodeLoc}, lats::AbstractVector{<:Real},
+        lons::AbstractVector{<:Real})
+    length(lats) == length(lons) || throw(DimensionMismatch(
+        "lats and lons must have equal length, got $(length(lats)) and $(length(lons))"
+    ))
+    n = length(lats)
+    for (i, lat) in enumerate(lats)
+        -90 <= lat <= 90 || throw(ArgumentError(
+            "latitude $lat at index $i is outside [-90, 90]"
+        ))
+    end
+
+    values = data(f)
+    loc_axis = _location_axis(NodeLoc, f)
+    trailing_dims = Tuple(d for (i, d) in enumerate(dims(f)) if i != loc_axis)
+    T = promote_type(eltype(values), Float64)
+
+    if ndims(values) == 1
+        out = Vector{T}(undef, n)
+        for (i, (lat, lon)) in enumerate(zip(lats, lons))
+            out[i] = interpolate(f, lat, lon)
+        end
+    else
+        out = Array{T}(undef, (n, map(length, trailing_dims)...))
+        for (i, (lat, lon)) in enumerate(zip(lats, lons))
+            copyto!(selectdim(out, 1, i), interpolate(f, lat, lon))
+        end
+    end
+
+    return DimensionalData.DimArray(out, (Dim{:point}(1:n), trailing_dims...);
+        name = DimensionalData.name(f))
+end
