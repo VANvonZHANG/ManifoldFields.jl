@@ -92,12 +92,12 @@ function interpolate(f::DiscreteField{NodeLoc}, g::AbstractManifoldMesh)
     trailing_dims = Tuple(d for (i, d) in enumerate(dims(f)) if i != loc_axis)
     T = promote_type(eltype(values), Float64)
     n = num_nodes(g)
-    # Node-id order, so that index `i` of the result's `Dim{:node}` axis is node
-    # `i` of `g`. `all_node_coordinates` is documented to return exactly that,
-    # but `LatLonGrid`'s zero-copy override (`vec` of the `[ilat, ilon]` node
-    # matrix) walks lat-fastest while node ids are lon-fastest
-    # (`ManifoldMeshes._node_linear_index`); the accessor loop is order-correct
-    # for every grid type.
+    # The result must be in node-id order, so that index `i` of the result's
+    # `Dim{:node}` axis is node `i` of `g`. Fetching coordinates one id at a
+    # time keeps that invariant independent of the `ManifoldMeshes` version in
+    # use: the batch accessor's ordering is a property of the installed
+    # version (0.7.0/0.7.1 return `LatLonGrid` nodes lat-fastest), while this
+    # loop is id-indexed by construction.
     points = [node_coordinates(g, i) for i in 1:n]
 
     if ndims(values) == 1
