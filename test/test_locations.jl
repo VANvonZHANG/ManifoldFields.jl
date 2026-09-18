@@ -25,3 +25,17 @@ using Test
     @test ManifoldFields.ugrid_dimname(EdgeLoc) == "n_edge"
     @test ManifoldFields.ugrid_dimname(CellLoc) == "n_face"
 end
+
+@testset "location_axis" begin
+    g = small_grid(; nlat = 2, nlon = 4)
+
+    nf = DiscreteField(NodeLoc, g, node_values(g), node_dims(g))
+    cf = DiscreteField(CellLoc, g, cell_values(g), cell_dims(g))
+    tf = DiscreteField(NodeLoc, g, node_time_values(g), node_time_dims(g))
+    ft = DiscreteField(NodeLoc, g, time_node_values(g), time_node_dims(g))
+
+    @test location_axis(nf) == 1
+    @test location_axis(cf) == 1
+    @test location_axis(tf) == 1
+    @test location_axis(ft) == 2
+end

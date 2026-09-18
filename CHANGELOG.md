@@ -44,6 +44,10 @@ releases.
   `load_ugrid(path; mesh = m)` still forces a specific grid.
 - Batch node interpolation: `interpolate(f, lats, lons)` returns a `DimArray`
   over a leading `Dim{:point}` axis with the field's trailing axes preserved.
+- `location_axis(f)` returns the index of a `DiscreteField`'s location axis.
+- `interpolate(f, dest_mesh)` evaluates a nodal field on another mesh's nodes
+  and returns a `DiscreteField{NodeLoc}` there (the basis of bilinear remapping
+  in `ManifoldRegrid.jl`).
 
 ### Changed
 

@@ -79,3 +79,40 @@ function interpolate(f::DiscreteField{NodeLoc}, lats::AbstractVector{<:Real},
     return DimensionalData.DimArray(out, (Dim{:point}(1:n), trailing_dims...);
         name = DimensionalData.name(f))
 end
+
+"""
+    interpolate(f::DiscreteField{NodeLoc}, g::AbstractManifoldMesh) -> DiscreteField{NodeLoc}
+
+Bilinear node interpolation evaluated at every node of `g`, returning a
+`DiscreteField{NodeLoc}` on `g` with `f`'s trailing axes preserved.
+"""
+function interpolate(f::DiscreteField{NodeLoc}, g::AbstractManifoldMesh)
+    values = data(f)
+    loc_axis = _location_axis(NodeLoc, f)
+    trailing_dims = Tuple(d for (i, d) in enumerate(dims(f)) if i != loc_axis)
+    T = promote_type(eltype(values), Float64)
+    n = num_nodes(g)
+    # Node-id order, so that index `i` of the result's `Dim{:node}` axis is node
+    # `i` of `g`. `all_node_coordinates` is documented to return exactly that,
+    # but `LatLonGrid`'s zero-copy override (`vec` of the `[ilat, ilon]` node
+    # matrix) walks lat-fastest while node ids are lon-fastest
+    # (`ManifoldMeshes._node_linear_index`); the accessor loop is order-correct
+    # for every grid type.
+    points = [node_coordinates(g, i) for i in 1:n]
+
+    if ndims(values) == 1
+        out = Vector{T}(undef, n)
+        for i in 1:n
+            out[i] = interpolate(f, points[i])
+        end
+    else
+        out = Array{T}(undef, (n, map(length, trailing_dims)...))
+        for i in 1:n
+            copyto!(selectdim(out, 1, i), interpolate(f, points[i]))
+        end
+    end
+
+    node_dim = location_dimname(NodeLoc)
+    return DiscreteField(NodeLoc, g, out, (node_dim(1:n), trailing_dims...);
+        name = DimensionalData.name(f))
+end

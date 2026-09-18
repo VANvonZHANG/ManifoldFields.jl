@@ -88,14 +88,15 @@ has a corresponding concrete mesh representation (see
 
 ## Interpolation
 
-Current interpolation supports `NodeLoc`, single-point and batched.
+Current interpolation supports `NodeLoc` in single-point, batched, and
+grid-target (destination-mesh) forms.
 
 Delivered 2026-09:
 
 - Batch node interpolation for many `(lat, lon)` query points in one call
   (`interpolate(f, lats, lons)`), and the grid-target form
-  (`interpolate(f, dest_mesh)`) that also backs bilinear remapping in
-  `ManifoldRegrid.jl`.
+  (`interpolate(f, dest_mesh)`) that the planned bilinear remapping in
+  `ManifoldRegrid.jl` will build on.
 
 Planned extensions:
 
