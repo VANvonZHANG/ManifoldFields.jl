@@ -9,6 +9,8 @@ releases.
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-09-19
+
 ### Added
 
 - Add GitHub Actions CI, documentation, formatting, CompatHelper, TagBot, and
@@ -85,6 +87,7 @@ releases.
 - UGRID own-file NetCDF round-trip support.
 - Broadcast support preserving field metadata.
 
-[unreleased]: https://github.com/VANvonZHANG/ManifoldFields.jl/compare/v0.1.0...HEAD
+[unreleased]: https://github.com/VANvonZHANG/ManifoldFields.jl/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/VANvonZHANG/ManifoldFields.jl/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/VANvonZHANG/ManifoldFields.jl/releases/tag/v0.1.0
 
