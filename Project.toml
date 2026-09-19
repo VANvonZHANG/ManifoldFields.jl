@@ -1,6 +1,6 @@
 name = "ManifoldFields"
 uuid = "9c5b4d8f-6d30-4f8a-9f1f-2c1e5c2f4b31"
-version = "0.1.0"
+version = "0.1.1"
 
 [deps]
 DimensionalData = "0703355e-b756-11e9-17c0-8b28908087d0"
@@ -13,7 +13,7 @@ YAXArrays = "c21b50f5-aa40-41ea-b809-c0f5e47bfa5c"
 [compat]
 Aqua = "0.8"
 DimensionalData = "0.29"
-ManifoldMeshes = "0.7"
+ManifoldMeshes = "0.7, 0.8"
 NCDatasets = "0.14"
 StaticArrays = "1.9"
 Statistics = "1.10"
