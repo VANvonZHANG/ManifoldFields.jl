@@ -16,3 +16,11 @@ ugrid_location(::Type{CellLoc}) = "face"
 ugrid_dimname(::Type{NodeLoc}) = "n_node"
 ugrid_dimname(::Type{EdgeLoc}) = "n_edge"
 ugrid_dimname(::Type{CellLoc}) = "n_face"
+
+"""
+    location_axis(f::DiscreteField{Loc}) -> Int
+
+Index of the axis of `f` that carries its location dimension (`Dim{:node}` for
+`NodeLoc`, `Dim{:cell}` for `CellLoc`, `Dim{:edge}` for `EdgeLoc`).
+"""
+location_axis(f::DiscreteField{Loc}) where {Loc} = _location_axis(Loc, f)

@@ -26,6 +26,20 @@ save_ugrid(f, path)
 loaded = load_ugrid(path)
 ```
 
+## Batch interpolation
+
+```julia
+using DimensionalData
+using ManifoldFields
+using ManifoldMeshes
+
+g = LatLonGrid(lat_edges = collect(-90.0:30.0:90.0), lon_edges = collect(0.0:45.0:360.0))
+f = DiscreteField(NodeLoc, g, randn(num_nodes(g)), (Dim{:node}(1:num_nodes(g)),); name = :temperature)
+
+pts = interpolate(f, [-45.0, 0.0, 30.0], [10.0, 90.0, 200.0])  # DimArray over Dim{:point}
+pts[1]
+```
+
 ## FieldSet
 
 Multiple `DiscreteField`s sharing one mesh (mixed locations allowed):

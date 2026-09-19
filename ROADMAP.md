@@ -88,27 +88,41 @@ has a corresponding concrete mesh representation (see
 
 ## Interpolation
 
-Current interpolation supports `NodeLoc`.
+Current interpolation supports `NodeLoc` in single-point, batched, and
+grid-target (destination-mesh) forms.
+
+Delivered 2026-09:
+
+- Batch node interpolation for many `(lat, lon)` query points in one call
+  (`interpolate(f, lats, lons)`), and the grid-target form
+  (`interpolate(f, dest_mesh)`) that the planned bilinear remapping in
+  `ManifoldRegrid.jl` will build on.
 
 Planned extensions:
 
-- Batch node interpolation for many `(lat, lon)` query points in one call.
 - `CellLoc` nearest or containing-cell gather.
 - Defer `EdgeLoc` interpolation until there is a clear physical use case.
 
 ## Remapping
 
-Introduce a remapping interface, either as a module or a package such as
-`ManifoldRegrid.jl`.
-
-Target API:
+Delivered 2026-09 as a separate package, `ManifoldRegrid.jl`:
 
 ```julia
-remap(field, dest_mesh; method = :bilinear)
+using ManifoldRegrid
+remap(Bilinear(), field, dest_mesh)      # nodal bilinear
+remap(Conservative(), field, dest_mesh)  # first-order conservative
 ```
 
-Implementation should reuse existing cell location, interpolation weight, and
-`DiscreteField` machinery.
+- Bilinear: `remap(Bilinear(), f, dest_mesh)`, backed by
+  `ManifoldFields.interpolate(f, dest_mesh)`.
+- Conservative (first-order): `remap(Conservative(), f::DiscreteField{CellLoc},
+  dest_mesh)`, backed by `conservative_weights(src_mesh, dest_mesh)`.
+
+The split follows the workspace layering: geometry over vertex rings lives in
+`ManifoldMeshes`, field semantics in `ManifoldFields`, mesh-pair orchestration
+in `ManifoldRegrid`. Remapping work continues in that repository — see its
+`ROADMAP.md` for second-order reconstruction, weight persistence, and general
+manifolds.
 
 ## Unstructured Sphere Mesh
 
