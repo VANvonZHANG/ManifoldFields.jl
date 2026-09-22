@@ -5,6 +5,8 @@ Discrete fields on `ManifoldMeshes.jl` meshes.
 [![CI](https://github.com/VANvonZHANG/ManifoldFields.jl/actions/workflows/CI.yml/badge.svg)](https://github.com/VANvonZHANG/ManifoldFields.jl/actions/workflows/CI.yml)
 [![Documentation](https://github.com/VANvonZHANG/ManifoldFields.jl/actions/workflows/Documentation.yml/badge.svg)](https://github.com/VANvonZHANG/ManifoldFields.jl/actions/workflows/Documentation.yml)
 
+**Documentation:** https://vanvonzhang.github.io/ManifoldFields.jl/
+
 ```julia
 using DimensionalData
 using ManifoldFields
@@ -70,6 +72,7 @@ location tags such as `NodeLoc`, `EdgeLoc`, and `CellLoc`.
 
 ## Package Status
 
-This repository is currently treated as a private/development Julia package.
-General Registry registration is deferred until the delivered `FieldSet` API and
-UGRID multi-field IO contracts have stabilized. See `ROADMAP.md`.
+Registered in the General Registry (first release 0.1.1). The `FieldSet` API
+and UGRID multi-field IO contracts are delivered; remaining plans — including
+remapping in the companion `ManifoldRegrid.jl` package — are tracked in
+`ROADMAP.md`.
