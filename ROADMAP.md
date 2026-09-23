@@ -5,20 +5,12 @@ This file records the next engineering steps after the initial
 
 ## Current Decision
 
-Use `ManifoldFields.jl` as a private/development package for now. Do not submit
-to the Julia General Registry until the `FieldSet` API and UGRID multi-field IO
-contracts have stabilized, local tests and GitHub Actions are green, and release
-notes are ready in `CHANGELOG.md`.
-
-Registration prerequisites:
-
-- GitHub Actions CI is green on Julia 1.10 and 1.11.
-- `LICENSE` exists.
-- `README.md` and Documenter docs describe the public API.
-- `Project.toml` version is bumped according to Julia `0.x` SemVer practice.
-- JuliaRegistrator is installed on the repository.
-- TagBot and `DOCUMENTER_KEY`/deploy keys are configured if docs deployment is
-  expected.
+Registered in the Julia General Registry as of 0.1.1 (2026-09). The
+prerequisites that gated registration — green CI on Julia 1.10 and 1.11, a
+license, public-API documentation, JuliaRegistrator, and TagBot with
+`DOCUMENTER_KEY` — are all in place; documentation is served at
+https://vanvonzhang.github.io/ManifoldFields.jl/. Future releases follow the
+normal tag-and-register flow.
 
 ## Priority Order
 

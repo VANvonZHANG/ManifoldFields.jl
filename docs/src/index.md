@@ -55,6 +55,3 @@ save_ugrid(fs, "fields.nc")
 fs2 = load_ugrid("fields.nc")        # FieldSet round-trip
 ```
 
-See `docs/superpowers/specs/2026-09-04-fieldset-design.md` for the design
-rationale.
-
